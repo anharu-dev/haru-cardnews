@@ -155,7 +155,10 @@ for (let i = 0; i < deck.cards.length; i++) {
     process.exit(1);
   }
   const durFrames = Math.round(Math.min(20, Math.max(MIN_SEC, clipSec)) * 30);
-  const props = { brand: deck.brand, card, durFrames };
+  /* 덱 전체의 글 분량을 같이 넘긴다 — 카드가 자기 것만 보고 크기를 정하면 넘길 때
+     제목 크기가 튄다. 배율은 카드가 아니라 덱 단위로 정해진다(MediaCard의 fitRatio). */
+  const summary = deck.cards.map((c) => ({ title: c.title, body: c.body, label: c.label, cta: c.cta }));
+  const props = { brand: deck.brand, card, durFrames, deck: summary };
 
   const tmp = mkdtempSync(join(tmpdir(), 'mediacard-'));
   const propsPath = join(tmp, 'props.json');

@@ -46,7 +46,15 @@ export type MediaCardDef = {
   source?: string;
 };
 
-export type MediaCardProps = { brand: DeckBrand; card: MediaCardDef; durFrames: number };
+/** 덱 전체의 글 분량 — 글자 배율을 카드마다가 아니라 덱 단위로 맞추려고 렌더 스크립트가 넘긴다. */
+export type DeckSummary = { title: string; body?: string[]; label?: string; cta?: boolean };
+
+export type MediaCardProps = {
+  brand: DeckBrand;
+  card: MediaCardDef;
+  durFrames: number;
+  deck?: DeckSummary[];
+};
 
 /* ── 레이아웃 (1080×1350) ─────────────────────────────────────────────
    여백 하나(M)로 창과 텍스트 컬럼의 좌측을 맞춘다. 예전엔 창 50 / 텍스트 96 으로 어긋나 있었다. */
@@ -215,7 +223,24 @@ const toBlocks = (lines: string[]): Block[] => {
 
 const MONO = "ui-monospace, 'Cascadia Mono', Consolas, 'SF Mono', Menlo, monospace";
 
-export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) => {
+/** 카드 한 장의 글이 글 존에 들어가는 배율 — 1보다 크면 여유가 남고, 작으면 넘친다. */
+const fitRatio = (c: { title: string; body?: string[]; label?: string }) => {
+  const titleH =
+    c.title.split('\n').reduce((n, l) => n + lineCount(l, TITLE_SIZE, TITLE_TRACK, TEXT_W), 0)
+    * TITLE_SIZE * TITLE_LH;
+  const blocks = toBlocks(c.body ?? []);
+  const bodyH = blocks.reduce(
+    (h, b) => h + (b.kind === 'code'
+      ? BODY_SIZE * 1.5 + 28
+      : lineCount(b.text, BODY_SIZE, BODY_TRACK, TEXT_W) * BODY_SIZE * BODY_LH),
+    0,
+  );
+  const needed = titleH + (blocks.length ? BODY_GAP + bodyH : 0);
+  const textTop = MEDIA_TOP + MEDIA_ZONE_H + LABEL_GAP + (c.label ? LABEL_H : 0) + TEXT_GAP;
+  return (1350 - BOTTOM_SAFE - textTop) / Math.max(1, needed);
+};
+
+export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, deck }) => {
   const frame = useCurrentFrame();
   const preset = THEMES[brand.theme ?? 'mono-light'] ?? THEMES['mono-light'];
   /* brand.accent(hex)로 프리셋 액센트를 덮어쓴다 — 자기 브랜드 색을 쓰라고 열어둔 자리다.
@@ -327,17 +352,6 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
     );
   }
 
-  // 본문이 길어도 하단 안전선을 넘지 않게 — 넘칠 때만 축소한다(평소엔 100%).
-  const titleH =
-    titleLines.reduce((n, l) => n + lineCount(l, TITLE_SIZE, TITLE_TRACK, TEXT_W), 0) * TITLE_SIZE * TITLE_LH;
-  const bodyH = blocks.reduce(
-    (h, b) => h + (b.kind === 'code'
-      ? BODY_SIZE * 1.5 + 28
-      : lineCount(b.text, BODY_SIZE, BODY_TRACK, TEXT_W) * BODY_SIZE * BODY_LH),
-    0,
-  );
-  const needed = titleH + (blocks.length ? BODY_GAP + bodyH : 0);
-
   /* 미디어 존은 **고정 크기**다(968×545). 창은 그 안에 비율 그대로 들어가 가운데 정렬된다.
      → 자료를 깎지 않으면서도 **캡션·제목 위치가 카드마다 절대 안 움직인다.**
      예전엔 창 높이가 자료 비율을 따라 변해서 3.17:1 클립에서 제목이 239px 튀어올랐다 —
@@ -352,8 +366,14 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
   const textTop = labelTop + (card.label ? LABEL_H : 0) + TEXT_GAP;
   const inkZoneH = labelTop + LABEL_H + 20;                 // ink 색면은 캡션 아래에서 끊는다
 
-  const room = 1350 - BOTTOM_SAFE - textTop;
-  const fit = needed > room ? room / needed : 1;
+  /* 글자 배율은 **덱 전체가 같은 값**을 쓴다. 카드마다 따로 맞추면 넘길 때 제목 크기가
+     오르락내리락해서 아마추어로 보인다 — 2026-07-31에 창 높이로 같은 문제를 겪고
+     고정 판형으로 바꿨던 것과 같은 이유다.
+     그래서 덱에서 가장 빡빡한 카드가 기준이 되고, 카드가 다 짧으면 다 같이 조금 커져서
+     하단 여백을 메운다. 줄이는 쪽은 제한이 없고(넘치는 게 더 나쁘다), 키우는 쪽만
+     1.15배로 막는다 — 짧은 덱에서 글자가 우스꽝스럽게 커지지 않게. */
+  const ratios = (deck ?? []).filter((c) => !c.cta && c.title).map(fitRatio);
+  const fit = Math.min(1.15, ...(ratios.length ? ratios : [fitRatio(card)]));
 
   return (
     <AbsoluteFill style={{ backgroundColor: t.page }}>
