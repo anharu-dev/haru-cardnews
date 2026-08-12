@@ -1,0 +1,21 @@
+{
+  "name": "haru-cardnews",
+  "version": "1.0.0",
+  "private": true,
+  "description": "실화면 클립 위에 라벨/제목/본문을 얹어 인스타 캐러셀용 4:5 카드를 슬라이드별 mp4로 렌더하는 도구",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "node scripts/mediacards.mjs sample"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.484",
+    "@remotion/fonts": "4.0.484",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "remotion": "4.0.484"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "typescript": "^6.0.3"
+  }
+}

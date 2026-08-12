@@ -1,0 +1,17 @@
+{
+  "brand": { "handle": "@내계정", "theme": "mono-light" },
+  "cards": [
+    {
+      "clip": "clips/sample/sample.mp4",
+      "label": "샘플 · 테스트 클립",
+      "title": "실화면 카드뉴스\n렌더러 테스트",
+      "body": ["clip 자리에 실제 mp4·png를 넣고", "label·title·body만 바꾸면 됩니다."]
+    },
+    {
+      "cta": true,
+      "title": "덱 하나로\n카드 여러 장",
+      "body": ["카드마다 clip 하나 + 텍스트 몇 줄이면 끝입니다."],
+      "action": "팔로우"
+    }
+  ]
+}

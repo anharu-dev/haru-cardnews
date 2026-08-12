@@ -1,0 +1,28 @@
+node_modules/
+out/
+.remotion/
+*.log
+
+# 사용자가 넣는 자료 — 남의 저작물이 실수로 커밋되지 않게 전부 무시하고 샘플만 예외로 둔다
+public/clips/*
+!public/clips/sample/
+!public/clips/sample/sample.mp4
+
+# 사용자가 만드는 덱(본인 카피가 들어간다) — 샘플만 남기고 무시
+public/mediadecks/*
+!public/mediadecks/sample.json
+
+# 비밀값 — 이 도구는 API 키를 쓰지 않지만, 사용자가 나중에 뭘 붙일지 모르니 미리 막아둔다
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS·에디터
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp

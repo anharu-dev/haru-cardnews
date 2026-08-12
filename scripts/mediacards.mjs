@@ -1,0 +1,128 @@
+/*
+ * 실화면 카드 딸깍 스크립트 — 슬라이드별 개별 4:5 영상 출력(레퍼런스 정합).
+ * 사용법:
+ *   1) 클립(mp4, 16:9 권장)을 public/clips/<아무경로>/ 에 넣는다
+ *   2) public/mediadecks/<덱>.json 에 카드들(clip·label·title·body[]) 작성
+ *   3) node scripts/mediacards.mjs <덱>
+ * → out/<덱>/01.mp4, 02.mp4 … (카드 길이 = 클립 실측 길이, 3~15s 클램프)
+ */
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const deckName = process.argv[2];
+if (!deckName) { console.error('사용법: node scripts/mediacards.mjs <덱이름> [--only 1,5]'); process.exit(1); }
+
+/* 덱 이름은 아래에서 셸 명령 문자열에 그대로 들어간다(npx remotion ... "out/<덱>/01.mp4").
+   따옴표·세미콜론·$() 같은 게 섞이면 명령이 갈라질 수 있어서, 파일명으로 쓸 만한 글자만 허용한다.
+   한글·영문·숫자·하이픈·언더스코어·점만 통과. (경로 구분자도 막아 상위 폴더 탈출을 함께 차단) */
+if (!/^[\w가-힣.-]+$/u.test(deckName)) {
+  console.error(
+    `\n덱 이름에 쓸 수 없는 문자가 있습니다: ${deckName}\n` +
+    `  한글·영문·숫자와 - _ . 만 쓸 수 있습니다. 공백과 특수문자는 빼주세요.\n`,
+  );
+  process.exit(1);
+}
+
+// 반려로 카드 한두 장만 고칠 때 — 그 카드만 다시 렌더한다(전체 재렌더 낭비 방지)
+const onlyIdx = (() => {
+  const i = process.argv.indexOf('--only');
+  if (i < 0) return null;
+  return new Set(process.argv[i + 1].split(',').map((n) => Number(n.trim())));
+})();
+
+const deckPath = join('public', 'mediadecks', `${deckName}.json`);
+let deck;
+try {
+  deck = JSON.parse(readFileSync(deckPath, 'utf8'));
+} catch (e) {
+  if (e.code === 'ENOENT') {
+    console.error(`\n덱 파일이 없습니다: ${deckPath}\n  public/mediadecks/ 안에 <덱이름>.json 파일이 있는지 확인하세요.\n`);
+  } else {
+    console.error(`\n덱 JSON을 읽는 중 오류가 났습니다: ${deckPath}\n  ${e.message}\n`);
+  }
+  process.exit(1);
+}
+mkdirSync(join('out', deckName), { recursive: true });
+
+const probe = (p) => {
+  const r = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', join('public', p)], { encoding: 'utf8' });
+  return Number(r.stdout.trim());
+};
+
+// 자료 실측 픽셀 — 창이 자료 비율을 따라가게(크롭 금지) MediaCard에 주입한다
+const probeDims = (p) => {
+  const r = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', join('public', p)], { encoding: 'utf8' });
+  const [w, h] = (r.stdout || '').trim().split(',').map(Number);
+  return w && h ? { clipW: w, clipH: h } : {};
+};
+
+for (let i = 0; i < deck.cards.length; i++) {
+  if (onlyIdx && !onlyIdx.has(i + 1)) continue;
+
+  /* clip 없는 일반 카드는 창이 빈 검은 상자로 나가므로 미리 막는다.
+     (2026-08-12: 예전엔 여기서 join(undefined)로 원시 스택트레이스를 뱉고 죽었다) */
+  if (!deck.cards[i].cta && !deck.cards[i].clip) {
+    console.error(
+      `\n카드 ${i + 1}에 clip이 없습니다.\n` +
+      `  이 도구는 '실제 화면 위에 글자를 얹는' 카드를 만듭니다 — 창에 넣을 자료가 있어야 합니다.\n` +
+      `  · 영상(mp4) 또는 이미지(png/jpg)를 public/clips/<폴더>/ 에 넣고\n` +
+      `    덱의 해당 카드에 "clip": "clips/<폴더>/<파일명>" 을 적으세요.\n` +
+      `  · 글자만 있는 카드를 원하면 "cta": true 를 주세요(마무리 카드용, 정지 이미지로 나갑니다).\n`,
+    );
+    process.exit(1);
+  }
+
+  const card = { ...deck.cards[i], ...(deck.cards[i].clip ? probeDims(deck.cards[i].clip) : {}) };
+  const isImage = card.clip ? /\.(png|jpe?g|webp)$/i.test(card.clip) : false;
+  /* 이미지·CTA는 기본 10초, 클립은 실측 길이. card.duration(초)으로 덮어쓰기 가능.
+     **영상은 10초 미만이면 렌더를 멈춘다 (2026-08-01 반려: "뭘 보려면 최소 10초는 돼야지").**
+     짧은 클립을 durFrames로 늘리면 마지막 프레임이 얼어붙으므로 패딩하지 않고 소재를 바꾼다. */
+  const MIN_SEC = 10;
+  const clipSec = card.duration ?? (card.cta || isImage ? MIN_SEC : probe(card.clip));
+  if (!card.cta && !isImage && clipSec < MIN_SEC - 0.05) {
+    console.error(
+      `\n카드 ${i + 1} 클립이 ${clipSec.toFixed(1)}초입니다 — 최소 ${MIN_SEC}초.\n` +
+      `  ${card.clip}\n` +
+      `  원본을 더 길게 다시 자르거나, 10초 이상 나오는 다른 소재로 바꾸세요.\n` +
+      `  (짧은 클립을 늘리면 마지막 프레임이 얼어붙습니다)\n`,
+    );
+    process.exit(1);
+  }
+  const durFrames = Math.round(Math.min(20, Math.max(MIN_SEC, clipSec)) * 30);
+  const props = { brand: deck.brand, card, durFrames };
+
+  const tmp = mkdtempSync(join(tmpdir(), 'mediacard-'));
+  const propsPath = join(tmp, 'props.json');
+  writeFileSync(propsPath, JSON.stringify(props));
+  const n = String(i + 1).padStart(2, '0');
+
+  /* CTA 카드는 창이 없어서 모션이 0이다 — 5초짜리 정지 영상을 mp4로 뽑을 이유가 없다.
+     PNG 한 장으로 뽑는다(2026-07-31). 인스타 캐러셀은 이미지·영상 혼합을 허용한다. */
+  const isStill = !!card.cta;
+  const outFile = join('out', deckName, `${n}.${isStill ? 'png' : 'mp4'}`);
+  console.log(`카드 ${i + 1}/${deck.cards.length}: ${card.title.replace(/\n/g, ' ')} ${isStill ? '(정지 PNG)' : `(${(durFrames / 30).toFixed(1)}s)`}`);
+
+  const cmd = isStill
+    ? `npx remotion still src/index.ts MediaCard "${outFile}" --frame=0 --props="${propsPath}"`
+    // 화질: 프레임 캡처는 기본 JPEG 80이라 화면 녹화·UI 글자가 뭉개진다(전체가 "흐리멍텅"해지는 진짜 원인).
+    // 무손실 PNG 캡처 + crf 14 로 뽑는다 — 렌더가 조금 느려지는 대신 대비가 살아난다.
+    /* --muted: 오디오 트랙 자체를 넣지 않는다. 무음 트랙이라도 남으면 인스타가 '오리지널 오디오'로
+       잡아 음악 라이브러리 붙이기가 걸린다. 소리는 사용자이 인스타 앱에서 얹는다(라이선스 해결 경로). */
+    /* concurrency=1, timeout=90000 (2026-08-12 반려로 확정): concurrency 2면 브라우저 탭 두 개가
+       동시에 Pretendard 4굵기를 각각 로드하는데(fonts.ts), 렌더 서버·시스템 자원이 바쁠 때
+       한쪽이 기본 타임아웃(28~30s) 안에 못 끝나 렌더 전체가 죽는다(실측: 335·347/360프레임에서 재현).
+       배포용 도구라 남의 컴퓨터 사양을 모른다 — 속도보다 완주가 우선이라 동시성을 낮추고
+       타임아웃을 넉넉히 늘린다. */
+    : `npx remotion render src/index.ts MediaCard "${outFile}" --props="${propsPath}" --concurrency=1 --timeout=90000 --image-format=png --crf=14 --muted`;
+
+  const r = spawnSync(cmd, { encoding: 'utf8', shell: true, stdio: 'inherit' });
+  rmSync(tmp, { recursive: true, force: true });
+  if (r.status !== 0) { console.error(`렌더 실패: 카드 ${i + 1}`); process.exit(1); }
+
+  // 같은 번호의 옛 확장자 파일이 남아 있으면 업로드 때 헷갈린다
+  const stale = join('out', deckName, `${n}.${isStill ? 'mp4' : 'png'}`);
+  if (existsSync(stale)) { rmSync(stale, { force: true }); console.log(`  (구버전 ${n}.${isStill ? 'mp4' : 'png'} 제거)`); }
+}
+console.log(`완료 — out/${deckName}/`);

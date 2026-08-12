@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "haru-cardnews",
+  "description": "실화면 위에 텍스트를 얹는 인스타 캐러셀 카드뉴스를 대화로 만드는 도구",
+  "owner": {
+    "name": "AI 안하루",
+    "url": "https://github.com/anharu-dev"
+  },
+  "plugins": [
+    {
+      "name": "haru-cardnews",
+      "description": "주제만 말하면 인터뷰·기획·렌더까지. 실화면 클립 위에 카피를 얹은 4:5 캐러셀 카드를 만듭니다.",
+      "source": "./",
+      "category": "content"
+    }
+  ]
+}
