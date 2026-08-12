@@ -6,31 +6,30 @@
 
 @ai_anharu 채널에서 실제로 쓰는 렌더 파이프라인 그대로입니다.
 
-## 설치 (2단계)
+## 설치 (한 번이면 끝)
 
-### 1) 렌더러 받기 — 실제로 영상을 뽑는 부분
-
-```bash
-git clone https://github.com/anharu-dev/haru-cardnews
-cd haru-cardnews
-npm install
-```
-
-### 2) 스킬 설치 — 아무 대화창에서나 부를 수 있게
-
-Claude Code를 켠 상태에서(터미널에 `claude` 입력 후) 두 줄 칩니다:
+Node.js·git 몰라도 됩니다. Claude Code를 켠 상태에서(터미널에 `claude` 입력 후) 두 줄만 칩니다:
 
 ```
 /plugin marketplace add anharu-dev/haru-cardnews
 /plugin install haru-cardnews@haru-cardnews
 ```
 
-두 번째 줄에서 설치 범위를 물어보면 **"Install for you (user scope)"** 를 고르세요 —
-그래야 컴퓨터 **어느 폴더**에서 Claude Code를 켜든 동작합니다(project/local scope는
-지금 켜져 있는 그 프로젝트에만 묶입니다).
+설치 범위를 물어보면 **"Install for you (user scope)"** 를 고르세요 — 그래야 컴퓨터
+**어느 폴더**에서 Claude Code를 켜든 동작합니다(project/local scope는 지금 켜져 있는
+그 프로젝트에만 묶입니다).
 
-설치되면 "카드뉴스 만들어줘"라고 치면 동작합니다.
-처음 한 번만 1)에서 받은 폴더 위치를 물어보고, 그 뒤로는 기억합니다.
+**이게 전부입니다.** 렌더러·폰트·의존성(node_modules)까지 이 두 줄로 한 번에 다 받아집니다.
+`git clone`·`npm install`을 따로 안 하셔도 됩니다 — 플러그인 설치가 그걸 대신합니다.
+
+설치되면 채팅창에 이렇게 치시면 됩니다:
+
+```
+카드뉴스 만들어줘
+```
+
+> 개발자라 렌더러 코드를 직접 보거나 고치고 싶으시면 아래 "내 카드뉴스 만들기" 절부터
+> 보시면 됩니다 — 그건 `git clone`으로 별도 받는 경로입니다.
 
 ## 쓰는 법
 
