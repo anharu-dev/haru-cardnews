@@ -314,6 +314,18 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
       ? `${mark} · 댓글에 '${card.keyword}'`
       : `${mark} · ${card.action ?? '팔로우'}`;
 
+    /* CTA는 창이 없어 세로 공간을 통째로 제목·본문·알약이 나눠 쓴다 — 일반 카드처럼 축소가
+       안 걸려 있어서, 제목을 길게 쓴 마지막 장이 위아래로 그냥 잘려 나갔다(2026-08-13).
+       CTA는 덱에 보통 한 장뿐이라(§3 "마지막 장은 CTA 전용") 덱 전체 배율과 안 묶고
+       이 카드 혼자 기준으로 줄인다 — 늘리진 않는다, 알약이 이미 있어 허전해 보이지 않는다. */
+    const CTA_PILL_BLOCK = 58 + 52 + 48; // marginTop + 알약 상하패딩 + 텍스트 한 줄
+    const ctaTitleH = titleLines.reduce((n, l) => n + lineCount(l, 92, TITLE_TRACK, TEXT_W), 0) * 92 * TITLE_LH;
+    const ctaBodyH = card.body.length
+      ? 46 + card.body.reduce((h, line) => h + lineCount(line, 42, BODY_TRACK, 800) * 42 * 1.6, 0)
+      : 0;
+    const ctaRoom = 1350 - BOTTOM_SAFE * 2 - CTA_PILL_BLOCK;
+    const ctaFit = Math.min(1, ctaRoom / Math.max(1, ctaTitleH + ctaBodyH));
+
     return (
       <AbsoluteFill style={{ backgroundColor: t.page }}>
         <Grain on={brand.texture} />
@@ -326,7 +338,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         >
           <div
             style={{
-              fontFamily: 'Pretendard', fontSize: 92, fontWeight: 800, color: inkC,
+              fontFamily: 'Pretendard', fontSize: 92 * ctaFit, fontWeight: 800, color: inkC,
               letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
               // keep-all은 어절을 지키지만, 띄어쓰기 없는 긴 덩어리(URL 등)는 컬럼 밖으로 흘러나간다.
               // anywhere를 같이 주면 평소엔 어절을 지키고 넘칠 때만 끊는다.
@@ -339,12 +351,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           </div>
 
           {card.body.length ? (
-            <div style={{ marginTop: 46, maxWidth: 800 }}>
+            <div style={{ marginTop: 46 * ctaFit, maxWidth: 800 }}>
               {card.body.map((line, i) => (
                 <div
                   key={i}
                   style={{
-                    fontFamily: 'Pretendard', fontSize: 42, fontWeight: 400, color: t.body,
+                    fontFamily: 'Pretendard', fontSize: 42 * ctaFit, fontWeight: 400, color: t.body,
                     lineHeight: 1.6, wordBreak: 'keep-all', overflowWrap: 'anywhere',
                     letterSpacing: `${BODY_TRACK}em`,
                   }}
