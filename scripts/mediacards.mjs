@@ -46,16 +46,45 @@ try {
 }
 mkdirSync(join('out', deckName), { recursive: true });
 
-const probe = (p) => {
-  const r = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', join('public', p)], { encoding: 'utf8' });
-  return Number(r.stdout.trim());
-};
+/* 플러그인은 git clone으로 깔리는데 node_modules는 .gitignore라 안 따라온다 —
+   README가 "다 받아진다"고 적어둔 것과 달리 남의 컴퓨터에선 부품이 없다(2026-08-13).
+   비개발자에게 "npm install 하세요"는 그 자체로 장벽이라 여기서 한 번만 알아서 받는다. */
+if (!existsSync('node_modules')) {
+  console.log('\n처음 실행이라 필요한 부품을 받는 중입니다 — 몇 분 걸립니다(이번 한 번만).\n');
+  const r = spawnSync('npm install', { shell: true, stdio: 'inherit' });
+  if (r.status !== 0) {
+    console.error('\n부품을 받지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.\n');
+    process.exit(1);
+  }
+}
+
+/* 클립 길이·픽셀은 Remotion이 들고 온 것으로 잰다 — 시스템에 ffmpeg가 깔려 있지 않아도 된다.
+   예전엔 시스템 ffprobe를 직접 불러서, 안 깔린 컴퓨터에선 stdout이 없어 원시 스택트레이스로
+   죽었다(2026-08-13). 배포용 도구라 남의 컴퓨터에 뭘 더 깔라고 요구하지 않는다.
+   한 번 호출로 길이·가로·세로가 다 나오므로 예전 probe/probeDims 두 번을 한 번으로 줄인다. */
+const { getVideoMetadata } = await import('@remotion/renderer');
 
 // 자료 실측 픽셀 — 창이 자료 비율을 따라가게(크롭 금지) MediaCard에 주입한다
-const probeDims = (p) => {
-  const r = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', join('public', p)], { encoding: 'utf8' });
-  const [w, h] = (r.stdout || '').trim().split(',').map(Number);
-  return w && h ? { clipW: w, clipH: h } : {};
+const probeClip = async (p) => {
+  const full = join('public', p);
+  /* 파일이 없으면 예전엔 길이가 0으로 나와서 "0.0초입니다 — 최소 10초" 라고 엉뚱하게 알렸다.
+     경로 오타인데 멀쩡한 영상을 계속 다시 자르게 만드는 오진이라 여기서 끊는다. */
+  if (!existsSync(full)) {
+    console.error(
+      `\n클립 파일이 없습니다: ${full}\n` +
+      `  덱의 "clip" 경로와 실제 파일 이름이 같은지 확인하세요 — 대소문자·확장자까지 같아야 합니다.\n`,
+    );
+    process.exit(1);
+  }
+  try {
+    return await getVideoMetadata(full);
+  } catch (e) {
+    console.error(
+      `\n이 파일을 읽지 못했습니다: ${full}\n  ${e.message}\n` +
+      `  파일이 손상됐거나 지원하지 않는 형식일 수 있습니다(mp4·png·jpg를 씁니다).\n`,
+    );
+    process.exit(1);
+  }
 };
 
 for (let i = 0; i < deck.cards.length; i++) {
@@ -74,13 +103,14 @@ for (let i = 0; i < deck.cards.length; i++) {
     process.exit(1);
   }
 
-  const card = { ...deck.cards[i], ...(deck.cards[i].clip ? probeDims(deck.cards[i].clip) : {}) };
+  const info = deck.cards[i].clip ? await probeClip(deck.cards[i].clip) : null;
+  const card = { ...deck.cards[i], ...(info ? { clipW: info.width, clipH: info.height } : {}) };
   const isImage = card.clip ? /\.(png|jpe?g|webp)$/i.test(card.clip) : false;
   /* 이미지·CTA는 기본 10초, 클립은 실측 길이. card.duration(초)으로 덮어쓰기 가능.
      **영상은 10초 미만이면 렌더를 멈춘다 (2026-08-01 반려: "뭘 보려면 최소 10초는 돼야지").**
      짧은 클립을 durFrames로 늘리면 마지막 프레임이 얼어붙으므로 패딩하지 않고 소재를 바꾼다. */
   const MIN_SEC = 10;
-  const clipSec = card.duration ?? (card.cta || isImage ? MIN_SEC : probe(card.clip));
+  const clipSec = card.duration ?? (card.cta || isImage ? MIN_SEC : info.durationInSeconds);
   if (!card.cta && !isImage && clipSec < MIN_SEC - 0.05) {
     console.error(
       `\n카드 ${i + 1} 클립이 ${clipSec.toFixed(1)}초입니다 — 최소 ${MIN_SEC}초.\n` +
