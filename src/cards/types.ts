@@ -13,4 +13,7 @@ export type DeckBrand = {
   theme?: 'mono-light' | 'mono-dark' | 'neon' | 'claude' | 'gemini' | 'gpt' | 'white' | 'ink' | 'dark';
   /** 하단 글 존 판형. 기본 'light'(순백). 'dark'면 카드 전체가 통짜 블랙이 된다. */
   surface?: 'light' | 'dark';
+  /** 종이질감(아주 옅은 입자)을 깐다. 기본 false — 순백 그대로.
+   *  자료 창 위에는 안 깔린다(화면 녹화가 지저분해지므로). */
+  texture?: boolean;
 };

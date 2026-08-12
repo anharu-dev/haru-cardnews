@@ -39,6 +39,10 @@ export type MediaCardDef = {
   body: string[];
   /** 카드 길이(초) 직접 지정. 렌더 스크립트가 읽으며, 지정해도 10~20초 안으로 맞춰진다 */
   duration?: number;
+  /** 전면 판형 — 자료가 카드를 꽉 채우고, 하단 그라데이션 위에 흰 글자를 얹는다.
+   *  사진·생성이미지처럼 '보여주는 게 주인공'인 자료용. 화면 녹화(16:9 UI)는 기본 창 판형이 낫다 —
+   *  전면으로 깔면 4:5에 맞추느라 좌우가 크게 잘려서 정작 봐야 할 UI가 날아간다. */
+  full?: boolean;
   cta?: boolean;           // 마지막 장 전용 — 창 없이 타이포 중앙 배치(실자료 규칙의 유일한 예외)
   keyword?: string;        // cta 카드의 댓글 키워드 — "댓글에 '키미'" 알약으로 박힌다
   action?: string;         // cta 알약 문구 — '팔로우' | '공유하기' | '저장하기' … 기본 '팔로우'
@@ -223,6 +227,22 @@ const toBlocks = (lines: string[]): Block[] => {
 
 const MONO = "ui-monospace, 'Cascadia Mono', Consolas, 'SF Mono', Menlo, monospace";
 
+/* 종이질감 — brand.texture로 켜는 선택 항목이고 기본은 꺼져 있다(순백 그대로).
+   feTurbulence는 시드가 고정이라 프레임마다 같은 무늬가 나온다 — 렌더 결정성이 깨지지 않는다.
+   입자가 보일락 말락 해야 종이지, 눈에 띄면 그냥 노이즈다. 인스타 압축에서 더 뭉개지는 것도 감안. */
+const GRAIN =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
+
+const Grain: React.FC<{ on?: boolean }> = ({ on }) =>
+  on ? (
+    <div
+      style={{
+        position: 'absolute', inset: 0, backgroundImage: GRAIN,
+        opacity: 0.05, mixBlendMode: 'multiply', pointerEvents: 'none',
+      }}
+    />
+  ) : null;
+
 /** 카드 한 장의 글이 글 존에 들어가는 배율 — 1보다 크면 여유가 남고, 작으면 넘친다. */
 const fitRatio = (c: { title: string; body?: string[]; label?: string }) => {
   const titleH =
@@ -296,6 +316,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
 
     return (
       <AbsoluteFill style={{ backgroundColor: t.page }}>
+        <Grain on={brand.texture} />
         <div
           style={{
             position: 'absolute', left: M, right: M, top: 0, bottom: 0,
@@ -375,12 +396,97 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   const ratios = (deck ?? []).filter((c) => !c.cta && c.title).map(fitRatio);
   const fit = Math.min(1.15, ...(ratios.length ? ratios : [fitRatio(card)]));
 
+  /* 전면 판형 — 자료가 카드를 꽉 채우고 하단 스크림 위에 흰 글자를 얹는다.
+     기본 창 판형(상단 블랙 존 + 하단 흰 글 존)은 화면 녹화용이다: 자료를 안 깎는 대신 자료가
+     카드의 절반만 쓴다. 사진·생성이미지는 반대로 자료가 주인공이라 꽉 채우는 게 맞다.
+     **여기서만 크롭을 허용한다** — 전면 판형의 대가이고, 그래서 화면 녹화엔 쓰지 않는다. */
+  if (card.full && clipSrc) {
+    const scrimTop = card.body.length ? '46%' : '56%';
+    return (
+      <AbsoluteFill style={{ backgroundColor: BLACK }}>
+        <div style={{ position: 'absolute', inset: 0, transform: `scale(${settle * kb})` }}>
+          {isImageClip ? (
+            <Img src={staticFile(clipSrc)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <OffthreadVideo src={staticFile(clipSrc)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+          )}
+        </div>
+
+        {/* 스크림 — 글자가 앉을 자리를 어둡게 깐다. 위쪽은 자료가 그대로 보이게 투명하게 둔다.
+            중간을 한 번 꺾는 이유: 곧장 검정으로 가면 경계가 띠처럼 보인다.
+            밝은 자료(흰 UI·하늘·눈)에서도 흰 글자가 읽혀야 하므로 아래쪽은 충분히 진하게 간다 —
+            자료를 살리겠다고 옅게 깔면 글이 안 읽혀서 카드가 통째로 못 쓰게 된다. */}
+        <div
+          style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, top: scrimTop,
+            background:
+              'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.42) 30%, rgba(0,0,0,0.78) 58%, rgba(0,0,0,0.96) 100%)',
+          }}
+        />
+        {/* 마스트헤드도 밝은 자료 위에선 사라진다 — 아주 얕게만 덮는다 */}
+        <div
+          style={{
+            position: 'absolute', left: 0, right: 0, top: 0, height: 150,
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0) 100%)',
+          }}
+        />
+
+        <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color="#ffffff" />
+
+        {/* 글은 아래에 붙인다 — 자료 높이가 어떻든 글의 밑선이 카드마다 안 움직인다 */}
+        <div style={{ position: 'absolute', left: M, right: M, bottom: BOTTOM_SAFE }}>
+          {card.label ? (
+            <div
+              style={{
+                fontFamily: 'Pretendard', fontSize: 25 * fit, fontWeight: 700,
+                letterSpacing: '-0.005em', color: 'rgba(255,255,255,0.66)', marginBottom: 18 * fit,
+              }}
+            >
+              {card.label}
+            </div>
+          ) : null}
+          <div
+            style={{
+              fontFamily: 'Pretendard', fontSize: TITLE_SIZE * fit, fontWeight: 800, color: '#ffffff',
+              letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
+              wordBreak: 'keep-all', overflowWrap: 'anywhere',
+              textShadow: '0 2px 24px rgba(0,0,0,0.45)',
+            }}
+          >
+            {titleLines.map((l, i) => (
+              <div key={i}>{emphasize(l, { color: t.accentDark })}</div>
+            ))}
+          </div>
+          {card.body.length ? (
+            <div style={{ marginTop: BODY_GAP * fit }}>
+              {card.body.map((line, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontFamily: 'Pretendard', fontSize: BODY_SIZE * fit, fontWeight: 400, color: BODY_D,
+                    lineHeight: BODY_LH, wordBreak: 'keep-all', overflowWrap: 'anywhere',
+                    letterSpacing: `${BODY_TRACK}em`, textShadow: '0 1px 16px rgba(0,0,0,0.45)',
+                  }}
+                >
+                  {emphasize(line, { fontWeight: 700, color: '#ffffff' })}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </AbsoluteFill>
+    );
+  }
+
   return (
     <AbsoluteFill style={{ backgroundColor: t.page }}>
       {/* 상단 존 — ink 테마일 때만 색면. white 테마는 바탕 그대로(예전의 탁한 그라데이션 제거). */}
       {t.topZone ? (
         <div style={{ position: 'absolute', left: 0, top: 0, right: 0, height: inkZoneH, background: t.topZone }} />
       ) : null}
+
+      {/* 종이질감은 자료 창 '아래'에 깐다 — 창이 덮으므로 화면 녹화는 깨끗하게 남는다 */}
+      <Grain on={brand.texture} />
 
       {/* 실화면 창 */}
       <div
