@@ -1,5 +1,15 @@
+import type { CSSProperties } from 'react';
 import { AbsoluteFill, Img, OffthreadVideo, interpolate, staticFile, useCurrentFrame, Easing } from 'remotion';
 import { DeckBrand } from './cards/types';
+
+/** `*단어*` 강조를 그리는 유일한 자리.
+    예전엔 CTA 분기와 일반 카드가 이 로직을 각각 복붙해 갖고 있어서 같은 종류 사고가 두 번 났다
+    (2026-08-01 CTA 본문에 별표가 그대로 찍힘 / 2026-08-13 흑백 무드에서 제목 강조가 사라짐).
+    한 곳으로 모아 둔 이유가 그거다 — 강조 규칙을 바꿀 땐 여기만 고친다. */
+const emphasize = (text: string, style: CSSProperties) =>
+  text.split(/\*([^*]+)\*/g).map((seg, j) =>
+    j % 2 === 1 ? <span key={j} style={style}>{seg}</span> : <span key={j}>{seg}</span>,
+  );
 
 /**
  * 실화면 카드(레퍼런스 정합): 상단 = 실제 화면 녹화 클립이 라운드 창에서 재생,
@@ -201,6 +211,20 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
     : preset;
   const t = brand.surface === 'dark' ? toDark(base) : base;
 
+  /* 흑백 무드는 액센트가 제목 잉크와 같은 색이라(MONO_MOOD) 제목 *강조*가 색으로는 사라진다 —
+     기본 무드가 이거라서, 강조 문법을 처음 써본 사람은 아무 일도 안 일어나는 걸 본다(2026-08-13).
+     무드 정체성이 '색 없음'인 건 의도한 설계라 색을 넣지 않고, 그때만 색면으로 표시한다.
+     밑줄이 아니라 색면인 이유: 밑줄은 한글 받침을 갉아먹는다. */
+  const titleEmph: CSSProperties = t.accent === t.ink
+    ? {
+        background: brand.surface === 'dark' ? 'rgba(255,255,255,0.16)' : 'rgba(16,16,16,0.11)',
+        borderRadius: 8, padding: '0 0.10em',
+        boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone',
+      }
+    : { color: t.accent };
+  // 본문 강조는 어느 무드에서나 색이 아니라 굵기로 준다 — 한 카드에 색이 두 군데면 시선이 갈라진다.
+  const bodyEmph: CSSProperties = { fontWeight: 700, color: t.ink };
+
   /* 0프레임부터 카드가 완성돼 있어야 한다 — 인스타는 첫 프레임을 피드 썸네일로 쓰고,
      슬라이드는 루프 재생된다. 등장 페이드인·끝 페이드아웃은 썸네일 공백과 검은 깜빡임을 만든다.
      모션은 '이미 보이는 것'을 거드는 데까지만: 창이 0.6% 앉는 정도, 글자는 건드리지 않는다. */
@@ -246,15 +270,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
             }}
           >
             {titleLines.map((l, i) => (
-              <div key={i}>
-                {l.split(/\*([^*]+)\*/g).map((seg, j) =>
-                  j % 2 === 1 ? (
-                    <span key={j} style={{ color: t.accent }}>{seg}</span>
-                  ) : (
-                    <span key={j}>{seg}</span>
-                  ),
-                )}
-              </div>
+              <div key={i}>{emphasize(l, titleEmph)}</div>
             ))}
           </div>
 
@@ -268,15 +284,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
                     lineHeight: 1.6, wordBreak: 'keep-all', letterSpacing: '-0.012em',
                   }}
                 >
-                  {/* 본문 강조는 색이 아니라 굵기로 — 일반 카드와 같은 규칙을 CTA에도 적용한다.
-                      (2026-08-01: 이 분기만 파서를 안 타서 별표가 그대로 찍히던 버그) */}
-                  {line.split(/\*([^*]+)\*/g).map((seg, j) =>
-                    j % 2 === 1 ? (
-                      <span key={j} style={{ fontWeight: 700, color: inkC }}>{seg}</span>
-                    ) : (
-                      <span key={j}>{seg}</span>
-                    ),
-                  )}
+                  {emphasize(line, bodyEmph)}
                 </div>
               ))}
             </div>
@@ -380,16 +388,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
           }}
         >
           {titleLines.map((l, i) => (
-            <div key={i}>
-              {/* *단어* = 무드 포인트 컬러 하이라이트 — 애플식 한 방 단어에 쓴다 */}
-              {l.split(/\*([^*]+)\*/g).map((seg, j) =>
-                j % 2 === 1 ? (
-                  <span key={j} style={{ color: t.accent }}>{seg}</span>
-                ) : (
-                  <span key={j}>{seg}</span>
-                ),
-              )}
-            </div>
+            <div key={i}>{emphasize(l, titleEmph)}</div>
           ))}
         </div>
         {blocks.length ? (
@@ -417,14 +416,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
                   lineHeight: BODY_LH, wordBreak: 'keep-all', letterSpacing: '-0.012em',
                 }}
               >
-                {/* *구절* = 굵기·색으로 강조. 색 액센트 대신 이걸로 문장 안에서 무게를 준다 */}
-                {b.text.split(/\*([^*]+)\*/g).map((seg, j) =>
-                  j % 2 === 1 ? (
-                    <span key={j} style={{ fontWeight: 700, color: t.ink }}>{seg}</span>
-                  ) : (
-                    <span key={j}>{seg}</span>
-                  ),
-                )}
+                {emphasize(b.text, bodyEmph)}
               </div>
             ),
           )}
