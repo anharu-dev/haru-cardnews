@@ -11,6 +11,16 @@ const emphasize = (text: string, style: CSSProperties) =>
     j % 2 === 1 ? <span key={j} style={style}>{seg}</span> : <span key={j}>{seg}</span>,
   );
 
+/* 줄 수는 `\n`만 세면 안 된다 — 브라우저가 폭에 맞춰 저절로 접은 줄까지 세야 실제 높이가 나온다.
+   예전엔 `\n` 개수만 세서, 긴 제목·본문이 카드 아래로 흘러 나가도 축소(fit)가 안 걸렸다(2026-08-13).
+   한글·가나·한자는 약 1em, 그 밖(영문·숫자·기호·공백)은 약 0.5em으로 친다. 브라우저 실측 없이
+   쓰는 어림이라 정확하진 않지만, 넉넉히 잡아 **넘침을 막는 쪽으로만** 틀린다. */
+const CJK = /[ᄀ-ᇿ⺀-鿿가-힯豈-﫿︰-﹏＀-｠]/;
+const lineCount = (s: string, fontSize: number, tracking: number, boxW: number) => {
+  const em = [...s.replace(/\*/g, '')].reduce((w, ch) => w + (CJK.test(ch) ? 1 : 0.5), 0);
+  return Math.max(1, Math.ceil(em / (boxW / (fontSize * (1 + tracking)))));
+};
+
 /**
  * 실화면 카드(레퍼런스 정합): 상단 = 실제 화면 녹화 클립이 라운드 창에서 재생,
  * 하단 = 화이트 텍스트 존(제목 + 본문 줄들). 슬라이드 1장 = 영상 1개.
@@ -48,10 +58,13 @@ const LABEL_H = 31;                // 캡션 실높이(25px 폰트)
 const TEXT_GAP = 56;               // 캡션 ↔ 제목
 const BOTTOM_SAFE = 96;            // 이 아래로는 글자가 내려가지 않는다
 
+const TEXT_W = 1080 - M * 2;       // 텍스트 컬럼 폭 — 미디어 존과 같은 968
 const TITLE_SIZE = 92;
 const TITLE_LH = 1.14;
+const TITLE_TRACK = -0.035;        // 제목 자간(em) — 높이 계산과 실제 렌더가 같은 값을 써야 한다
 const BODY_SIZE = 43;
 const BODY_LH = 1.56;
+const BODY_TRACK = -0.012;         // 본문 자간(em)
 const BODY_GAP = 36;
 
 /* ── 무드 팔레트 ───────────────────────────────────────────────────────
@@ -163,7 +176,8 @@ const THEMES: Record<string, Theme> = {
     accent: '#d40f2c',
     accentDark: '#ff2e4d',      // 검정에선 원래의 네온 레드가 산다
     ring: 'rgba(255,46,77,0.34)',
-    shadow: '0 24px 48px -20px rgba(0,0,0,0.75), 0 0 30px rgba(255,46,77,0.18)',
+    // 창 주변 붉은 발광은 반려됐다 — 임팩트는 ring 한 줄로 낸다. 글로우는 AI 슬롭의 표식이다.
+    shadow: '0 24px 48px -20px rgba(0,0,0,0.75)',
   }),
   // Google·Gemini 주제 전용 — 구글 블루(흰 바탕용 진한 톤)
   gemini: mood({ label: '#7ab6f0', accent: '#1263cf', accentDark: '#5b9dfa' }),
@@ -266,7 +280,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
           <div
             style={{
               fontFamily: 'Pretendard', fontSize: 92, fontWeight: 800, color: inkC,
-              letterSpacing: '-0.035em', lineHeight: TITLE_LH, wordBreak: 'keep-all',
+              letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
+              // keep-all은 어절을 지키지만, 띄어쓰기 없는 긴 덩어리(URL 등)는 컬럼 밖으로 흘러나간다.
+              // anywhere를 같이 주면 평소엔 어절을 지키고 넘칠 때만 끊는다.
+              wordBreak: 'keep-all', overflowWrap: 'anywhere',
             }}
           >
             {titleLines.map((l, i) => (
@@ -281,7 +298,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
                   key={i}
                   style={{
                     fontFamily: 'Pretendard', fontSize: 42, fontWeight: 400, color: t.body,
-                    lineHeight: 1.6, wordBreak: 'keep-all', letterSpacing: '-0.012em',
+                    lineHeight: 1.6, wordBreak: 'keep-all', overflowWrap: 'anywhere',
+                    letterSpacing: `${BODY_TRACK}em`,
                   }}
                 >
                   {emphasize(line, bodyEmph)}
@@ -309,8 +327,14 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
   }
 
   // 본문이 길어도 하단 안전선을 넘지 않게 — 넘칠 때만 축소한다(평소엔 100%).
-  const titleH = titleLines.length * TITLE_SIZE * TITLE_LH;
-  const bodyH = blocks.reduce((h, b) => h + (b.kind === 'code' ? BODY_SIZE * 1.5 + 28 : BODY_SIZE * BODY_LH), 0);
+  const titleH =
+    titleLines.reduce((n, l) => n + lineCount(l, TITLE_SIZE, TITLE_TRACK, TEXT_W), 0) * TITLE_SIZE * TITLE_LH;
+  const bodyH = blocks.reduce(
+    (h, b) => h + (b.kind === 'code'
+      ? BODY_SIZE * 1.5 + 28
+      : lineCount(b.text, BODY_SIZE, BODY_TRACK, TEXT_W) * BODY_SIZE * BODY_LH),
+    0,
+  );
   const needed = titleH + (blocks.length ? BODY_GAP + bodyH : 0);
 
   /* 미디어 존은 **고정 크기**다(968×545). 창은 그 안에 비율 그대로 들어가 가운데 정렬된다.
@@ -413,7 +437,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
                 key={i}
                 style={{
                   fontFamily: 'Pretendard', fontSize: BODY_SIZE * fit, fontWeight: 400, color: t.body,
-                  lineHeight: BODY_LH, wordBreak: 'keep-all', letterSpacing: '-0.012em',
+                  lineHeight: BODY_LH, wordBreak: 'keep-all', overflowWrap: 'anywhere',
+                  letterSpacing: `${BODY_TRACK}em`,
                 }}
               >
                 {emphasize(b.text, bodyEmph)}
