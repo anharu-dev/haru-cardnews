@@ -32,12 +32,13 @@ const lineCount = (s: string, fontSize: number, tracking: number, boxW: number) 
  */
 export type MediaCardDef = {
   clip?: string;           // clips/<...>.mp4 또는 .png/.jpg — 이미지면 창이 천천히 커진다. cta 카드는 생략
-  clipW?: number;          // 자료 실측 픽셀 — 렌더 스크립트가 ffprobe로 채운다. 없으면 16:9 간주
+  clipW?: number;          // 자료 실측 픽셀 — 렌더 스크립트가 채운다. 없으면 16:9 간주
   clipH?: number;
   label?: string;          // 창 아래 캡션 (예: 출처명 · CASE 01)
   title: string;
   body: string[];
-  clipVolume?: number;
+  /** 카드 길이(초) 직접 지정. 렌더 스크립트가 읽으며, 지정해도 10~20초 안으로 맞춰진다 */
+  duration?: number;
   cta?: boolean;           // 마지막 장 전용 — 창 없이 타이포 중앙 배치(실자료 규칙의 유일한 예외)
   keyword?: string;        // cta 카드의 댓글 키워드 — "댓글에 '키미'" 알약으로 박힌다
   action?: string;         // cta 알약 문구 — '팔로우' | '공유하기' | '저장하기' … 기본 '팔로우'
@@ -263,7 +264,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
     // 흰 판형이면 블랙 알약, 통짜 블랙 판형이면 흰 알약(chipBg/chipText가 이미 뒤집혀 있다).
     const pillBg = t.chipBg;
     const pillFg = t.chipText;
-    const mark = brand.wordmark ?? 'AI 안하루';
+    const mark = brand.wordmark ?? brand.handle ?? 'AI 안하루';
     const pillText = card.keyword
       ? `${mark} · 댓글에 '${card.keyword}'`
       : `${mark} · ${card.action ?? '팔로우'}`;
@@ -379,7 +380,6 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
           ) : (
             <OffthreadVideo
               src={staticFile(clipSrc)}
-              volume={card.clipVolume ?? 0.7}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
             />
           )}
@@ -450,7 +450,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames }) 
       </div>
 
       {/* 라이트 무드는 상단이 블랙 존이라 마스트헤드도 그 위에서 읽히는 색으로 */}
-      <Masthead text={brand.wordmark ?? 'AI 안하루'} color={t.topZone ? '#ffffff' : t.ink} />
+      <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color={t.topZone ? '#ffffff' : t.ink} />
     </AbsoluteFill>
   );
 };

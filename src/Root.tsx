@@ -5,7 +5,7 @@ import './fonts';
 // 데모 기본값 — 실제 사용 시 mediacards.mjs가 public/mediadecks/<덱>.json에서
 // 카드마다 이 값들을 채워서 넘긴다. 여기 값은 studio 미리보기용 샘플일 뿐이다.
 const MEDIA_DEFAULTS: MediaCardProps = {
-  brand: { handle: '@내계정', accent: '#0066ff', kicker: '내 브랜드' },
+  brand: { handle: '@내계정', wordmark: '내 브랜드', accent: '#0066ff' },
   card: {
     clip: 'clips/sample/sample.mp4',
     label: '샘플 · 테스트 클립',

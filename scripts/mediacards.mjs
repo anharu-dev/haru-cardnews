@@ -17,20 +17,14 @@ if (!deckName) { console.error('사용법: node scripts/mediacards.mjs <덱이�
 /* 덱 이름은 아래에서 셸 명령 문자열에 그대로 들어간다(npx remotion ... "out/<덱>/01.mp4").
    따옴표·세미콜론·$() 같은 게 섞이면 명령이 갈라질 수 있어서, 파일명으로 쓸 만한 글자만 허용한다.
    한글·영문·숫자·하이픈·언더스코어·점만 통과. (경로 구분자도 막아 상위 폴더 탈출을 함께 차단) */
-if (!/^[\w가-힣.-]+$/u.test(deckName)) {
+/* 점만으로 된 이름(`.`, `..`)은 위 정규식을 통과하지만 결과물이 엉뚱한 폴더로 나간다 */
+if (!/^[\w가-힣.-]+$/u.test(deckName) || /^\.+$/.test(deckName)) {
   console.error(
     `\n덱 이름에 쓸 수 없는 문자가 있습니다: ${deckName}\n` +
     `  한글·영문·숫자와 - _ . 만 쓸 수 있습니다. 공백과 특수문자는 빼주세요.\n`,
   );
   process.exit(1);
 }
-
-// 반려로 카드 한두 장만 고칠 때 — 그 카드만 다시 렌더한다(전체 재렌더 낭비 방지)
-const onlyIdx = (() => {
-  const i = process.argv.indexOf('--only');
-  if (i < 0) return null;
-  return new Set(process.argv[i + 1].split(',').map((n) => Number(n.trim())));
-})();
 
 const deckPath = join('public', 'mediadecks', `${deckName}.json`);
 let deck;
@@ -44,6 +38,46 @@ try {
   }
   process.exit(1);
 }
+/* 덱이 스키마를 안 지키면 예전엔 렌더 도중 원시 스택트레이스로 죽었다
+   ("Cannot read properties of undefined (reading 'length'/'replace')").
+   비개발자는 그 화면에서 뭘 고쳐야 할지 알 수 없으므로, 렌더를 시작하기 전에 한 번에 짚어준다. */
+const bad = [];
+if (!deck || typeof deck !== 'object') bad.push('덱 파일이 { } 로 시작하는 JSON이 아닙니다.');
+else {
+  if (!Array.isArray(deck.cards) || deck.cards.length === 0) bad.push('"cards" 목록이 없거나 비어 있습니다.');
+  if (!deck.brand || typeof deck.brand !== 'object') bad.push('"brand" 항목이 없습니다(handle·theme 등이 들어가는 자리).');
+  (Array.isArray(deck.cards) ? deck.cards : []).forEach((c, i) => {
+    if (!c || typeof c !== 'object') { bad.push(`카드 ${i + 1}이 { } 형태가 아닙니다.`); return; }
+    if (typeof c.title !== 'string' || !c.title.trim()) bad.push(`카드 ${i + 1}에 "title"이 없습니다.`);
+    if (c.body !== undefined && !Array.isArray(c.body)) bad.push(`카드 ${i + 1}의 "body"는 [ ] 목록이어야 합니다(한 문장 = 한 줄).`);
+  });
+}
+if (bad.length) {
+  console.error(`\n덱 파일을 고쳐야 합니다: ${deckPath}\n${bad.map((m) => `  · ${m}`).join('\n')}\n`);
+  process.exit(1);
+}
+for (const c of deck.cards) if (c.body === undefined) c.body = [];
+
+/* 반려로 카드 한두 장만 고칠 때 — 그 카드만 다시 렌더한다(전체 재렌더 낭비 방지).
+   예전엔 값 검증이 없어서 `--only abc`·`--only 99`가 조용히 0장을 렌더하고 "완료"라고 했고,
+   `--only`만 쓰고 숫자를 빠뜨리면 원시 TypeError로 죽었다(2026-08-13). */
+const onlyIdx = (() => {
+  const i = process.argv.indexOf('--only');
+  if (i < 0) return null;
+  const raw = process.argv[i + 1];
+  const nums = (raw ?? '').split(',').map((n) => Number(n.trim()));
+  const ok = raw && nums.every((n) => Number.isInteger(n) && n >= 1 && n <= deck.cards.length);
+  if (!ok) {
+    console.error(
+      `\n--only 뒤에는 카드 번호를 씁니다 — 이 덱은 1~${deck.cards.length}번까지 있습니다.\n` +
+      `  예: node scripts/mediacards.mjs ${deckName} --only 2\n` +
+      `      node scripts/mediacards.mjs ${deckName} --only 2,3\n`,
+    );
+    process.exit(1);
+  }
+  return new Set(nums);
+})();
+
 mkdirSync(join('out', deckName), { recursive: true });
 
 /* 플러그인은 git clone으로 깔리는데 node_modules는 .gitignore라 안 따라온다 —

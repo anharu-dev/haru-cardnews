@@ -113,8 +113,8 @@ node scripts/mediacards.mjs 내덱 --only 3,5
 
 | 필드 | 설명 |
 |---|---|
-| `brand.handle` | 인스타 핸들 |
-| `brand.wordmark` | 카드 최상단 중앙에 조용히 박히는 표기. **기본값이 `AI 안하루`라 안 바꾸면 그게 그대로 나갑니다** — 본인 브랜드명으로 꼭 바꾸세요 |
+| `brand.handle` | 인스타 핸들. `wordmark`를 안 주면 이게 카드에 찍힙니다 |
+| `brand.wordmark` | 카드 최상단 중앙과 마무리 버튼에 박히는 표기. 없으면 `handle`을, 그것도 없으면 `AI 안하루`를 씁니다 — **둘 다 비우면 남의 브랜드명이 본인 카드에 나갑니다** |
 | `brand.accent` | 강조색 hex(예: `"#1a7f5a"`). 주면 `theme` 프리셋 색을 덮어씁니다 — **자기 브랜드 색 쓰는 자리** |
 | `brand.theme` | 액센트 색 프리셋: `mono-light`(기본, 흑백) · `claude`(코랄) · `gpt`(코발트) · `neon`(레드, 속보용) · `gemini`(구글 블루) |
 | `brand.surface` | `light`(기본, 하단이 흰 배경) · `dark`(카드 전체가 통짜 블랙). **주의**: `theme`만으로는 검정 카드가 안 나옵니다 — 검정 판형을 쓰려면 반드시 이 필드를 `dark`로 지정하세요 |
