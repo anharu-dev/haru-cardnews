@@ -31,7 +31,7 @@ const lineCount = (s: string, fontSize: number, tracking: number, boxW: number) 
  * 덱 brand.theme 으로 덮어쓴다.
  */
 export type MediaCardDef = {
-  clip?: string;           // clips/<...>.mp4 또는 .png/.jpg — 이미지면 창이 천천히 커진다. cta 카드는 생략
+  clip?: string;           // clips/<...>.mp4 또는 .png/.jpg. cta 카드는 생략
   clipW?: number;          // 자료 실측 픽셀 — 렌더 스크립트가 채운다. 없으면 16:9 간주
   clipH?: number;
   label?: string;          // 창 아래 캡션 (예: 출처명 · CASE 01)
@@ -43,6 +43,10 @@ export type MediaCardDef = {
    *  사진·생성이미지처럼 '보여주는 게 주인공'인 자료용. 화면 녹화(16:9 UI)는 기본 창 판형이 낫다 —
    *  전면으로 깔면 4:5에 맞추느라 좌우가 크게 잘려서 정작 봐야 할 UI가 날아간다. */
   full?: boolean;
+  /** 사진·이미지 소스에 켄번즈(천천히 확대)를 걸어 mp4로 뽑는다. 기본 false — 정지 이미지 그대로 png.
+   *  화면 녹화(mp4)는 이 필드와 무관하게 항상 그 자체로 영상이다. 완성된 사진(스톡·자체 촬영)에
+   *  합성 확대를 억지로 걸면 안 하느니만 못하다는 게 기본 판단이라, 원할 때만 켠다(2026-08-13). */
+  motion?: boolean;
   cta?: boolean;           // 마지막 장 전용 — 창 없이 타이포 중앙 배치(실자료 규칙의 유일한 예외)
   keyword?: string;        // cta 카드의 댓글 키워드 — "댓글에 '키미'" 알약으로 박힌다
   action?: string;         // cta 알약 문구 — '팔로우' | '공유하기' | '저장하기' … 기본 '팔로우'

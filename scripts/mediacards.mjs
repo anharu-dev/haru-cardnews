@@ -167,7 +167,11 @@ for (let i = 0; i < deck.cards.length; i++) {
 
   /* CTA 카드는 창이 없어서 모션이 0이다 — 5초짜리 정지 영상을 mp4로 뽑을 이유가 없다.
      PNG 한 장으로 뽑는다(2026-07-31). 인스타 캐러셀은 이미지·영상 혼합을 허용한다. */
-  const isStill = !!card.cta;
+  /* 사진·이미지는 기본이 정지 PNG다 — 완성된 사진에 합성 확대(켄번즈)를 억지로 걸지 않는다.
+     화면 녹화(mp4)는 원래부터 실제 움직임이 있어서 항상 영상으로 나간다.
+     "이미지도 무조건 켄번즈 mp4"였던 예전 기본값이 실사용에서 반려됐다(2026-08-13) —
+     스톡 사진 카드가 이유 없이 재생 버튼 붙은 동영상으로 나가서 이상해 보였다. */
+  const isStill = !!card.cta || (isImage && !card.motion);
   const outFile = join('out', deckName, `${n}.${isStill ? 'png' : 'mp4'}`);
   console.log(`카드 ${i + 1}/${deck.cards.length}: ${card.title.replace(/\n/g, ' ')} ${isStill ? '(정지 PNG)' : `(${(durFrames / 30).toFixed(1)}s)`}`);
 

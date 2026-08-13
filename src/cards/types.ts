@@ -17,3 +17,5 @@ export type DeckBrand = {
    *  자료 창 위에는 안 깔린다(화면 녹화가 지저분해지므로). */
   texture?: boolean;
 };
+
+// (카드별 motion 옵션은 MediaCard.tsx의 MediaCardDef에 있다 — 여긴 덱 공통 설정만.)
