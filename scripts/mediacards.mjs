@@ -177,12 +177,14 @@ for (let i = 0; i < deck.cards.length; i++) {
     // 무손실 PNG 캡처 + crf 14 로 뽑는다 — 렌더가 조금 느려지는 대신 대비가 살아난다.
     /* --muted: 오디오 트랙 자체를 넣지 않는다. 무음 트랙이라도 남으면 인스타가 '오리지널 오디오'로
        잡아 음악 라이브러리 붙이기가 걸린다. 소리는 사용자이 인스타 앱에서 얹는다(라이선스 해결 경로). */
-    /* concurrency=1, timeout=90000 (2026-08-12 반려로 확정): concurrency 2면 브라우저 탭 두 개가
-       동시에 Pretendard 4굵기를 각각 로드하는데(fonts.ts), 렌더 서버·시스템 자원이 바쁠 때
-       한쪽이 기본 타임아웃(28~30s) 안에 못 끝나 렌더 전체가 죽는다(실측: 335·347/360프레임에서 재현).
-       배포용 도구라 남의 컴퓨터 사양을 모른다 — 속도보다 완주가 우선이라 동시성을 낮추고
-       타임아웃을 넉넉히 늘린다. */
-    : `npx remotion render src/index.ts MediaCard "${outFile}" --props="${propsPath}" --concurrency=1 --timeout=90000 --image-format=png --crf=14 --muted`;
+    /* 동시성은 지정하지 않는다 — Remotion이 그 컴퓨터 코어 수를 보고 정하게 둔다.
+       예전엔 --concurrency=1로 묶여 있었다(2026-08-12). 탭 두 개가 각각 Pretendard를 로드하다
+       한쪽이 타임아웃에 걸려 렌더가 죽었기 때문인데, 그 원인은 폰트 핸들 누수였고 이미 고쳤다
+       (fonts.ts 참고). 그래서 제약을 푼다 — 6코어에서 300프레임 82초 → 25초로 실측 3.3배,
+       산출물은 바이트 단위로 동일했다. 숫자를 박지 않는 이유는 남의 컴퓨터가 2코어일 수도
+       있어서다: 고정값은 느린 기계에서 오히려 서로 잡아먹는다.
+       timeout은 넉넉히 남겨둔다 — 느린 기계에서 OffthreadVideo가 프레임을 못 뽑는 경우 대비. */
+    : `npx remotion render src/index.ts MediaCard "${outFile}" --props="${propsPath}" --timeout=90000 --image-format=png --crf=14 --muted`;
 
   const r = spawnSync(cmd, { encoding: 'utf8', shell: true, stdio: 'inherit' });
   rmSync(tmp, { recursive: true, force: true });
