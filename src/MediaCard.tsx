@@ -52,10 +52,22 @@ export type MediaCardDef = {
   action?: string;         // cta 알약 문구 — '팔로우' | '공유하기' | '저장하기' … 기본 '팔로우'
   /** @deprecated 출처는 본문 문장에 녹인다 — 별도 줄로 찍지 않는다(2026-07-31) */
   source?: string;
+  /** 카드 왼쪽 위 작은 라벨 칩(예: "TREND"·"HOW TO"). 짧은 한두 단어만 — 줄바꿈 없이 한 줄로 찍힌다.
+   *  cta 카드에는 안 붙는다. 색은 브랜드 무드를 그대로 따르고 사용자가 못 바꾼다(2026-08-13). */
+  badge?: string;
+  /** 비교(vs) 카드 — 미디어 없이 두 항목을 나란히 대비시키는 타이포 판형.
+   *  clip·full과 같이 못 쓴다(그러면 그냥 무시되고 비교 판형이 이긴다). */
+  compare?: { left: { label: string; text: string }; right: { label: string; text: string } };
+  /** 단계(steps) 카드 — 미디어 없이 번호 매긴 목록을 세로로 나열하는 타이포 판형. 3~5개 권장,
+   *  그 이상이면 한 카드에 다 안 들어가 자동으로 줄어들다 못해 잘릴 수 있다. */
+  steps?: string[];
 };
 
 /** 덱 전체의 글 분량 — 글자 배율을 카드마다가 아니라 덱 단위로 맞추려고 렌더 스크립트가 넘긴다. */
-export type DeckSummary = { title: string; body?: string[]; label?: string; cta?: boolean };
+export type DeckSummary = {
+  title: string; body?: string[]; label?: string; cta?: boolean;
+  compare?: unknown; steps?: unknown; // 있으면 자기 혼자 기준으로 줄이는 카드 — 덱 배율 계산에서 뺀다
+};
 
 export type MediaCardProps = {
   brand: DeckBrand;
@@ -117,6 +129,26 @@ const Masthead: React.FC<{ text?: string; color: string }> = ({ text, color }) =
            300은 fonts.ts에 실제로 로드된 두께여야 한다. 없는 두께를 쓰면 700으로 올라간다. */
         fontFamily: 'Pretendard', fontSize: 19, fontWeight: 300,
         letterSpacing: '0.26em', color, opacity: 0.34,
+      }}
+    >
+      {text}
+    </div>
+  ) : null;
+
+/**
+ * 라벨 칩 — 카드 왼쪽 위, 마스트헤드와 같은 높이대. "장식은 템플릿이 정하고 사용자는 텍스트만
+ * 준다"는 원칙으로 만들었다(2026-08-13) — 위치·크기·색은 고정, 문구 한 줄만 바뀐다.
+ * 색은 새로 만들지 않고 CTA 알약·코드칩과 같은 chipBg/chipText를 그대로 쓴다 — 그 둘은 이미
+ * light/dark 판형 양쪽에서 대비가 검증된 조합이라, 배지만 따로 새 색을 정하면 그게 새 사고 지점이 된다.
+ */
+const Badge: React.FC<{ text?: string; bg: string; fg: string }> = ({ text, bg, fg }) =>
+  text ? (
+    <div
+      style={{
+        position: 'absolute', left: M, top: 40, zIndex: 5,
+        padding: '11px 24px', borderRadius: 999, background: bg, color: fg,
+        fontFamily: 'Pretendard', fontSize: 22, fontWeight: 800, letterSpacing: '-0.01em',
+        whiteSpace: 'nowrap',
       }}
     >
       {text}
@@ -389,6 +421,189 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     );
   }
 
+  /* 비교(vs) 카드 — 미디어 없는 타이포 판형. CTA와 같은 이유로 덱 전체 배율에 안 묶이고
+     이 카드 혼자 기준으로 줄인다(늘리진 않는다) — 비교 카드는 보통 덱에 한두 장뿐이라
+     다른 카드 분량에 맞춰 커지거나 작아지면 오히려 부자연스럽다(2026-08-13 신설). */
+  if (card.compare) {
+    const { left, right } = card.compare;
+    const cmpTop = 200;
+    const colGap = 40;
+    const colW = (1080 - M * 2 - colGap) / 2;
+    const hasCaption = card.body.length > 0;
+    const captionH = hasCaption ? 70 : 0;
+    const panelBottom = 1350 - BOTTOM_SAFE - captionH;
+
+    const titleH = titleLines.reduce((n, l) => n + lineCount(l, 64, TITLE_TRACK, TEXT_W), 0) * 64 * TITLE_LH;
+    const zoneTop = cmpTop + titleH + 56;
+    const zoneH = panelBottom - zoneTop;
+
+    // 각 컬럼 문구는 3줄을 넘기면 46px가 안 맞는다 — 그때만 한 단 낮춘다(늘어나는 방향은 없음).
+    const phraseSize = (t: string) => (lineCount(t, 46, TITLE_TRACK, colW - 32) > 3 ? 32 : 46);
+    const colContentH = (s: { text: string }) => {
+      const size = phraseSize(s.text);
+      return 22 + 14 + lineCount(s.text, size, TITLE_TRACK, colW - 32) * size * 1.25;
+    };
+    /* 문구가 짧으면(대부분 그렇다) 패널을 존 하단까지 억지로 늘리지 않는다 — 늘리면 컬럼 내용이
+       거대한 빈 상자 한가운데 외로이 떠서 제목과 관계 없어 보인다(2026-08-13 실측 반려).
+       내용 높이만큼만 패널을 잡고, 남는 공간은 위아래로 반씩 나눠 준다. */
+    const panelH = Math.min(zoneH, Math.max(colContentH(left), colContentH(right)));
+    const panelTop = zoneTop + Math.max(0, (zoneH - panelH) / 2);
+
+    const Column: React.FC<{ side: { label: string; text: string }; x: number }> = ({ side, x }) => (
+      <div
+        style={{
+          position: 'absolute', left: x, top: panelTop, width: colW, height: panelH,
+          display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 16px',
+        }}
+      >
+        <div style={{ fontFamily: 'Pretendard', fontSize: 22, fontWeight: 700, color: t.body, marginBottom: 14 }}>
+          {side.label}
+        </div>
+        <div
+          style={{
+            fontFamily: 'Pretendard', fontSize: phraseSize(side.text), fontWeight: 800, color: t.ink,
+            lineHeight: 1.25, wordBreak: 'keep-all', overflowWrap: 'anywhere',
+          }}
+        >
+          {side.text}
+        </div>
+      </div>
+    );
+
+    return (
+      <AbsoluteFill style={{ backgroundColor: t.page }}>
+        <Grain on={brand.texture} />
+        <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
+        <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color={t.ink} />
+
+        <div style={{ position: 'absolute', left: M, right: M, top: cmpTop }}>
+          <div
+            style={{
+              fontFamily: 'Pretendard', fontSize: 64, fontWeight: 800, color: t.ink,
+              letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
+              wordBreak: 'keep-all', overflowWrap: 'anywhere',
+            }}
+          >
+            {titleLines.map((l, i) => (
+              <div key={i}>{emphasize(l, titleEmph)}</div>
+            ))}
+          </div>
+        </div>
+
+        <Column side={left} x={M} />
+        <Column side={right} x={M + colW + colGap} />
+        {/* 구분선 — 컬럼 사이 중앙 */}
+        <div
+          style={{
+            position: 'absolute', left: 1080 / 2, top: panelTop, width: 1, height: panelH,
+            background: 'rgba(16,16,16,0.12)',
+          }}
+        />
+        {/* VS 배지 — 구분선 중앙에 얹는다 */}
+        <div
+          style={{
+            position: 'absolute', left: 1080 / 2, top: panelTop + panelH / 2,
+            transform: 'translate(-50%, -50%)', width: 68, height: 68, borderRadius: 999,
+            background: t.chipBg, color: t.chipText,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: 'Pretendard', fontSize: 22, fontWeight: 800,
+          }}
+        >
+          VS
+        </div>
+
+        {hasCaption ? (
+          <div
+            style={{
+              position: 'absolute', left: M, right: M, bottom: BOTTOM_SAFE - 20,
+              fontFamily: 'Pretendard', fontSize: 28, fontWeight: 500, color: t.body,
+              textAlign: 'center', wordBreak: 'keep-all',
+            }}
+          >
+            {emphasize(card.body[0], bodyEmph)}
+          </div>
+        ) : null}
+      </AbsoluteFill>
+    );
+  }
+
+  /* 단계(steps) 카드 — 미디어 없는 번호 목록 판형. 비교 카드와 같은 이유로 자기 혼자 기준으로
+     줄인다. 번호는 굵은 숫자(액센트가 잉크와 같으면 흑백무드처럼 잉크로, 아니면 액센트로) —
+     제목 강조와 같은 "색이 있으면 액센트, 없으면 잉크" 판단을 그대로 따른다. */
+  if (card.steps && card.steps.length > 0) {
+    const zoneTop = 200;
+    const zoneBottom = 1350 - BOTTOM_SAFE;
+    const numW = 130;
+    const rowGap = 28;
+    const titleH = titleLines.reduce((n, l) => n + lineCount(l, 60, TITLE_TRACK, TEXT_W), 0) * 60 * TITLE_LH;
+    const titleBlock = card.title ? titleH + 44 : 0;
+    const room = zoneBottom - zoneTop - titleBlock;
+
+    const rowsNeeded = card.steps.map(
+      (s) => Math.max(1, lineCount(s, 40, BODY_TRACK, 1080 - M * 2 - numW)) * 40 * 1.35,
+    );
+    const needed = rowsNeeded.reduce((a, b) => a + b, 0) + rowGap * (card.steps.length - 1);
+    const stepsFit = Math.min(1, room / Math.max(1, needed));
+    const numColor = t.accent === t.ink ? t.ink : t.accent;
+
+    /* 목록이 짧으면(3~4개, 대부분 그렇다) 존 하단까지 늘리지 않는다 — 위쪽에 몰려 있고
+       아래가 텅 비면 미완성처럼 보인다(2026-08-13 실측 반려). 실제 블록 높이만큼만 잡고
+       남는 공간을 위아래로 반씩 나눠, 카드 가운데쯤에 오게 한다. */
+    const blockH = titleBlock + Math.min(room, needed * stepsFit);
+    const stepTop = zoneTop + Math.max(0, (zoneBottom - zoneTop - blockH) / 2);
+
+    return (
+      <AbsoluteFill style={{ backgroundColor: t.page }}>
+        <Grain on={brand.texture} />
+        <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
+        <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color={t.ink} />
+
+        <div style={{ position: 'absolute', left: M, right: M, top: stepTop }}>
+          {card.title ? (
+            <div
+              style={{
+                fontFamily: 'Pretendard', fontSize: 60 * stepsFit, fontWeight: 800, color: t.ink,
+                letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH, marginBottom: 44 * stepsFit,
+                wordBreak: 'keep-all', overflowWrap: 'anywhere',
+              }}
+            >
+              {titleLines.map((l, i) => (
+                <div key={i}>{emphasize(l, titleEmph)}</div>
+              ))}
+            </div>
+          ) : null}
+
+          {card.steps.map((s, i) => (
+            <div
+              key={i}
+              style={{
+                display: 'flex', alignItems: 'flex-start',
+                marginTop: i === 0 ? 0 : rowGap * stepsFit,
+              }}
+            >
+              <div
+                style={{
+                  width: numW, flexShrink: 0, fontFamily: 'Pretendard',
+                  fontSize: 44 * stepsFit, fontWeight: 800, color: numColor, letterSpacing: '-0.02em',
+                }}
+              >
+                {String(i + 1).padStart(2, '0')}
+              </div>
+              <div
+                style={{
+                  fontFamily: 'Pretendard', fontSize: 40 * stepsFit, fontWeight: 500, color: t.ink,
+                  lineHeight: 1.35, wordBreak: 'keep-all', overflowWrap: 'anywhere',
+                }}
+              >
+                {emphasize(s, bodyEmph)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </AbsoluteFill>
+    );
+  }
+
   /* 미디어 존은 **고정 크기**다(968×545). 창은 그 안에 비율 그대로 들어가 가운데 정렬된다.
      → 자료를 깎지 않으면서도 **캡션·제목 위치가 카드마다 절대 안 움직인다.**
      예전엔 창 높이가 자료 비율을 따라 변해서 3.17:1 클립에서 제목이 239px 튀어올랐다 —
@@ -409,7 +624,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
      그래서 덱에서 가장 빡빡한 카드가 기준이 되고, 카드가 다 짧으면 다 같이 조금 커져서
      하단 여백을 메운다. 줄이는 쪽은 제한이 없고(넘치는 게 더 나쁘다), 키우는 쪽만
      1.15배로 막는다 — 짧은 덱에서 글자가 우스꽝스럽게 커지지 않게. */
-  const ratios = (deck ?? []).filter((c) => !c.cta && c.title).map(fitRatio);
+  const ratios = (deck ?? []).filter((c) => !c.cta && !c.compare && !c.steps && c.title).map(fitRatio);
   const fit = Math.min(1.15, ...(ratios.length ? ratios : [fitRatio(card)]));
 
   /* 전면 판형 — 자료가 카드를 꽉 채우고 하단 스크림 위에 흰 글자를 얹는다.
@@ -448,6 +663,9 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         />
 
         <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color="#ffffff" />
+        {/* 전면 판형은 항상 사진 위 스크림이라 chipBg/chipText(surface 토글용)를 안 쓰고
+            흰 배지로 고정한다 — 어떤 사진이 와도 대비가 보장되는 유일한 조합이다. */}
+        <Badge text={card.badge} bg="#ffffff" fg={BLACK} />
 
         {/* 글은 아래에 붙인다 — 자료 높이가 어떻든 글의 밑선이 카드마다 안 움직인다 */}
         <div style={{ position: 'absolute', left: M, right: M, bottom: BOTTOM_SAFE }}>
@@ -593,6 +811,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
 
       {/* 라이트 무드는 상단이 블랙 존이라 마스트헤드도 그 위에서 읽히는 색으로 */}
       <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color={t.topZone ? '#ffffff' : t.ink} />
+      <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
     </AbsoluteFill>
   );
 };
