@@ -265,16 +265,19 @@ const MONO = "ui-monospace, 'Cascadia Mono', Consolas, 'SF Mono', Menlo, monospa
 
 /* 종이질감 — brand.texture로 켜는 선택 항목이고 기본은 꺼져 있다(순백 그대로).
    feTurbulence는 시드가 고정이라 프레임마다 같은 무늬가 나온다 — 렌더 결정성이 깨지지 않는다.
-   입자가 보일락 말락 해야 종이지, 눈에 띄면 그냥 노이즈다. 인스타 압축에서 더 뭉개지는 것도 감안. */
+   "켜고 끄고"만 있던 걸 강도 2단으로 나눴다(2026-08-14) — 안 보이면 선택한 의미가 없고,
+   너무 세면 그냥 노이즈로 보인다("입자가 보일락 말락 해야 종이지" 원칙은 옅게 쪽에 그대로
+   남기고, 진하게는 눈에 띄게 다른 값을 준다). 인스타 압축에서 더 뭉개지는 것도 감안. */
 const GRAIN =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
+const GRAIN_OPACITY: Record<'light' | 'heavy', number> = { light: 0.05, heavy: 0.13 };
 
-const Grain: React.FC<{ on?: boolean }> = ({ on }) =>
-  on ? (
+const Grain: React.FC<{ level?: 'light' | 'heavy' }> = ({ level }) =>
+  level ? (
     <div
       style={{
         position: 'absolute', inset: 0, backgroundImage: GRAIN,
-        opacity: 0.05, mixBlendMode: 'multiply', pointerEvents: 'none',
+        opacity: GRAIN_OPACITY[level], mixBlendMode: 'multiply', pointerEvents: 'none',
       }}
     />
   ) : null;
@@ -364,7 +367,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
 
     return (
       <AbsoluteFill style={{ backgroundColor: t.page }}>
-        <Grain on={brand.texture} />
+        <Grain level={brand.texture} />
         <div
           style={{
             position: 'absolute', left: M, right: M, top: 0, bottom: 0,
@@ -472,7 +475,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
 
     return (
       <AbsoluteFill style={{ backgroundColor: t.page }}>
-        <Grain on={brand.texture} />
+        <Grain level={brand.texture} />
         <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
         <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color={t.ink} />
 
@@ -554,7 +557,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
 
     return (
       <AbsoluteFill style={{ backgroundColor: t.page }}>
-        <Grain on={brand.texture} />
+        <Grain level={brand.texture} />
         <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
         <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color={t.ink} />
 
@@ -720,7 +723,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
       ) : null}
 
       {/* 종이질감은 자료 창 '아래'에 깐다 — 창이 덮으므로 화면 녹화는 깨끗하게 남는다 */}
-      <Grain on={brand.texture} />
+      <Grain level={brand.texture} />
 
       {/* 실화면 창 */}
       <div

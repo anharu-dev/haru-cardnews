@@ -13,9 +13,10 @@ export type DeckBrand = {
   theme?: 'mono-light' | 'mono-dark' | 'neon' | 'claude' | 'gemini' | 'gpt' | 'white' | 'ink' | 'dark';
   /** 하단 글 존 판형. 기본 'light'(순백). 'dark'면 카드 전체가 통짜 블랙이 된다. */
   surface?: 'light' | 'dark';
-  /** 종이질감(아주 옅은 입자)을 깐다. 기본 false — 순백 그대로.
-   *  자료 창 위에는 안 깔린다(화면 녹화가 지저분해지므로). */
-  texture?: boolean;
+  /** 종이질감 강도. 기본 없음(순백 그대로) — `light`는 보일락 말락, `heavy`는 눈에 띄게.
+   *  자료 창 위에는 안 깔린다(화면 녹화가 지저분해지므로). 2026-08-14: 켜고 끄고만 있던 걸
+   *  강도 선택으로 넓혔다 — "선택"이라면서 실제로는 이진값 하나였다는 지적이 있었다. */
+  texture?: 'light' | 'heavy';
 };
 
 // (카드별 motion 옵션은 MediaCard.tsx의 MediaCardDef에 있다 — 여긴 덱 공통 설정만.)
