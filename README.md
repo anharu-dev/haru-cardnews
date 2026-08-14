@@ -59,11 +59,17 @@ Node.js·git 몰라도 됩니다. Claude Code를 켠 상태에서(터미널에 `
 본인 사진이 없어도 카드는 만들어집니다(텍스트만으로도 됩니다). 스톡 사진까지 쓰고 싶으실 때만
 아래를 한 번 해두시면 됩니다 — **안 해도 도구는 그냥 넘어갑니다. 여기서 멈추지 않습니다.**
 
-1. https://unsplash.com/developers 에서 가입 → "New Application"으로 앱을 만들고
-   Access Key를 받습니다(결제·카드 등록 없음).
-2. 키를 채팅에 붙여넣어 주시면 도구가 알아서 저장합니다. 직접 넣고 싶으시면
-   `~/.claude/haru-cardnews.env`(Windows는 `C:\Users\<사용자>\.claude\haru-cardnews.env`)에
-   `UNSPLASH_ACCESS_KEY=받은키` 한 줄을 넣으시면 됩니다.
+채팅창에 "스톡 사진 쓰고 싶어요"라고만 말씀하시면 됩니다 — 도구가 https://unsplash.com/developers
+를 직접 열어드리고, 그 페이지에서 뭘 눌러야 하는지까지 순서대로 알려드립니다. 요약하면:
+
+1. **Register as a developer** 클릭 → 이메일로 가입(**카드 등록 없음, 시간당 1,000장 조회까지
+   무료**)
+2. **New Application** → 약관 동의 → 이름·설명 아무거나 한 줄씩 → **Create application**
+3. 그 페이지에 뜨는 긴 문자열(Access Key)을 채팅에 붙여넣으시면 도구가 알아서 저장합니다.
+
+직접 넣고 싶으시면 `~/.claude/haru-cardnews.env`(Windows는
+`C:\Users\<사용자>\.claude\haru-cardnews.env`)에 `UNSPLASH_ACCESS_KEY=받은키` 한 줄을
+넣으시면 됩니다.
 
 > 키를 **플러그인 폴더 안에 두지 않는 이유**: 플러그인을 다시 설치하면 그 폴더는 통째로
 > 덮어써져서 키가 사라집니다. `~/.claude/` 아래에 두면 재설치해도 남습니다.
