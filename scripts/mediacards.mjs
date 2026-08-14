@@ -96,7 +96,16 @@ if (!existsSync('node_modules')) {
    예전엔 시스템 ffprobe를 직접 불러서, 안 깔린 컴퓨터에선 stdout이 없어 원시 스택트레이스로
    죽었다(2026-08-13). 배포용 도구라 남의 컴퓨터에 뭘 더 깔라고 요구하지 않는다.
    한 번 호출로 길이·가로·세로가 다 나오므로 예전 probe/probeDims 두 번을 한 번으로 줄인다. */
-const { getVideoMetadata } = await import('@remotion/renderer');
+const { getVideoMetadata, ensureBrowser } = await import('@remotion/renderer');
+
+/* npm install로 받는 건 Remotion 라이브러리 코드뿐이다 — 실제로 화면을 그리는 헤드리스
+   크롬은 별개로, npx remotion render/still을 맨 처음 실행하는 순간 Remotion이 알아서
+   따로 받는다(ensure-browser.js, ~100~200MB). 이미 받아져 있으면 즉시 통과하는 함수라
+   카드 루프 시작 전에 여기서 한 번 불러 둔다 — 그래야 "부품 받는 중"이라는 안내가
+   카드 1번 렌더 중간에 뜬금없이 끼어들지 않고, 대기 시간 안내와 한 자리에 모인다
+   (2026-08-14: "완전 로컬"이라고만 해두고 이 두 번째 다운로드를 안내에서 빠뜨렸었다). */
+console.log('부품 확인 중 — 헤드리스 브라우저가 없으면 한 번만 더 받습니다(수 분, 이후엔 안 걸립니다)...');
+await ensureBrowser();
 
 // 자료 실측 픽셀 — 창이 자료 비율을 따라가게(크롭 금지) MediaCard에 주입한다
 const probeClip = async (p) => {
