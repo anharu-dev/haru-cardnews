@@ -429,34 +429,72 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
      다른 카드 분량에 맞춰 커지거나 작아지면 오히려 부자연스럽다(2026-08-13 신설). */
   if (card.compare) {
     const { left, right } = card.compare;
-    const cmpTop = 200;
-    const colGap = 40;
+    const outerTop = 200;   // 마스트헤드 아래, 존이 시작하는 자리
+    const blockGap = 56;    // 제목 ↔ 패널
+    /* 카드 중앙엔 지름 68의 VS 배지 원이 떠 있다(반지름 34). 갭이 40이면 컬럼 박스 안쪽 경계가
+       중앙에서 20만큼만 떨어져 있어 원 안으로 14가 파고들고, 컬럼 패딩(16)을 더해도 텍스트가
+       원과 2px 간격으로 거의 붙는다 — 오른쪽 컬럼이 3줄까지 차는 비교(vs) 카드에서 실제로
+       "이것도"의 이 자가 원에 닿는 걸 확인했다(2026-08-15). 갭을 넓혀 패딩 뒤에도
+       원과 최소 20px는 떨어지게 한다. */
+    const colGap = 80;
     const colW = (1080 - M * 2 - colGap) / 2;
     const hasCaption = card.body.length > 0;
-    const captionH = hasCaption ? 70 : 0;
-    const panelBottom = 1350 - BOTTOM_SAFE - captionH;
+    const outerBottom = 1350 - BOTTOM_SAFE;
+    const captionGap = 42;    // 패널 ↔ 캡션
+    const captionLineH = 34;  // 캡션은 항상 한 줄(28px 폰트)이라 줄바꿈 계산이 필요 없다
+    const captionBlockH = hasCaption ? captionGap + captionLineH : 0;
 
     const titleH = titleLines.reduce((n, l) => n + lineCount(l, 64, TITLE_TRACK, TEXT_W), 0) * 64 * TITLE_LH;
-    const zoneTop = cmpTop + titleH + 56;
-    const zoneH = panelBottom - zoneTop;
+    const maxPanelH = outerBottom - outerTop - titleH - blockGap - captionBlockH; // 패널 높이 상한
 
-    // 각 컬럼 문구는 3줄을 넘기면 46px가 안 맞는다 — 그때만 한 단 낮춘다(늘어나는 방향은 없음).
-    const phraseSize = (t: string) => (lineCount(t, 46, TITLE_TRACK, colW - 32) > 3 ? 32 : 46);
+    /* 문구가 짧으면 크게 — 비교 카드의 본체는 이 숫자/단문 대비이지, 제목이 아니다.
+       46px 고정이면 "6시간" 같은 두세 글자가 여백 한가운데 조그맣게 떠서, 카드가 비어
+       보이는 진짜 원인이었다(2026-08-15, 위치·여백을 아무리 옮겨도 안 고쳐졌다 — "여기다
+       뭘 채울래" 반려). 한 줄에 들어가는 한도 안에서 최대한 큰 단을 쓰고, 그것도 안 되는
+       (문장형) 문구만 원래 로직(46, 3줄 넘으면 32)으로 내려간다. */
+    const phraseSize = (t: string) => {
+      for (const size of [104, 88, 72, 60]) {
+        if (lineCount(t, size, TITLE_TRACK, colW - 32) === 1) return size;
+      }
+      return lineCount(t, 46, TITLE_TRACK, colW - 32) > 3 ? 32 : 46;
+    };
     const colContentH = (s: { text: string }) => {
       const size = phraseSize(s.text);
       return 22 + 14 + lineCount(s.text, size, TITLE_TRACK, colW - 32) * size * 1.25;
     };
-    /* 문구가 짧으면(대부분 그렇다) 패널을 존 하단까지 억지로 늘리지 않는다 — 늘리면 컬럼 내용이
-       거대한 빈 상자 한가운데 외로이 떠서 제목과 관계 없어 보인다(2026-08-13 실측 반려).
-       내용 높이만큼만 패널을 잡고, 남는 공간은 위아래로 반씩 나눠 준다. */
-    const panelH = Math.min(zoneH, Math.max(colContentH(left), colContentH(right)));
-    const panelTop = zoneTop + Math.max(0, (zoneH - panelH) / 2);
+    /* 제목을 고정하고 그 아래만 쌓았더니(2026-08-15) 문구가 짧은 — 실사용 대부분인 — 케이스에서
+       카드 하단 거의 절반이 빈 채로 남았다("여따가는 뭐 쓸래" 반려, 스크린샷으로 확인).
+       비교 카드엔 채울 다른 소재가 없으니 그 자리를 채울 방법이 없다 — 유일한 답은 여백을
+       위아래로 고르게 나누는 것뿐이다. **제목+패널+캡션을 한 덩어리**로 보고 카드 안에서
+       가운데 정렬한다(steps 카드와 같은 원칙). 대가: 비교 카드가 한 덱에 둘 이상이면 문구
+       길이에 따라 제목 높이가 카드마다 조금씩(대개 6~10%p) 달라진다 — 그런데 이 카드
+       타입은 원래 덱에 한두 장뿐이라(주석 §427) 실제로 부딪힐 일은 드물고, 절반 빈 카드보다
+       훨씬 작은 대가다. */
+    const panelH = Math.min(maxPanelH, Math.max(colContentH(left), colContentH(right)));
+    const blockH = titleH + blockGap + panelH + captionBlockH;
+    /* [outerTop, outerBottom] 안에서 여백을 반씩 나눴더니 실제로는 안 맞았다 — 마스트헤드
+       예약분(outerTop=200)이 하단 안전여백(BOTTOM_SAFE=96)보다 훨씬 커서, 그 존 안에서
+       "균등"해도 카드 실제 위/아래 여백은 505:401로 어긋났다(2026-08-15, 그리드 실측으로
+       확인 — "두 개 붙잡고 무게중심 못 맞추다" 반려). 카드 실제 양 끝(0, 1350) 기준으로
+       위·아래 공백이 같아지는 지점을 먼저 구하고, 마스트헤드·하단 안전영역만 침범하지
+       않게 자른다. */
+    const idealCmpTop = (1350 - blockH) / 2;
+    const cmpTop = Math.max(outerTop, Math.min(idealCmpTop, outerBottom - blockH));
+    const panelTop = cmpTop + titleH + blockGap;
+    const captionTop = panelTop + panelH + captionGap;
 
-    const Column: React.FC<{ side: { label: string; text: string }; x: number }> = ({ side, x }) => (
+    /* 왼쪽 칸은 오른쪽(가운데 VS 배지) 쪽으로 붙여 정렬한다 — 왼쪽 정렬 그대로 두면 짧은
+       문구가 칸의 바깥쪽(카드 왼쪽 끝)에 붙고, 오른쪽 칸은 원래도 칸이 배지 바로 옆이라
+       짧은 문구가 자연히 배지에 붙는다. 그래서 좌우가 배지를 가운데 두고 마주 보지 못하고
+       한쪽만 배지에 바짝 붙어 보였다(2026-08-15, "수직 중앙선" 반려 — 세로 중앙은 맞았어도
+       가로 중앙선 기준 좌우 무게가 안 맞았다). align을 칸마다 반대로 줘서 둘 다 배지를
+       마주보게 한다. */
+    const Column: React.FC<{ side: { label: string; text: string }; x: number; align: 'left' | 'right' }> = ({ side, x, align }) => (
       <div
         style={{
           position: 'absolute', left: x, top: panelTop, width: colW, height: panelH,
-          display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 16px',
+          display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: align === 'right' ? 'flex-end' : 'flex-start',
+          textAlign: align, padding: '0 16px',
         }}
       >
         <div style={{ fontFamily: 'Pretendard', fontSize: 22, fontWeight: 700, color: t.body, marginBottom: 14 }}>
@@ -493,8 +531,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           </div>
         </div>
 
-        <Column side={left} x={M} />
-        <Column side={right} x={M + colW + colGap} />
+        <Column side={left} x={M} align="right" />
+        <Column side={right} x={M + colW + colGap} align="left" />
         {/* 구분선 — 컬럼 사이 중앙 */}
         <div
           style={{
@@ -518,7 +556,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         {hasCaption ? (
           <div
             style={{
-              position: 'absolute', left: M, right: M, bottom: BOTTOM_SAFE - 20,
+              position: 'absolute', left: M, right: M, top: captionTop,
               fontFamily: 'Pretendard', fontSize: 28, fontWeight: 500, color: t.body,
               textAlign: 'center', wordBreak: 'keep-all',
             }}
