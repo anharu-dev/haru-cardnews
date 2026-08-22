@@ -199,6 +199,59 @@ const MONO_MOOD = mood({
    그래서 부활시키되 본문을 #e6e8ea로 올려 대비 15:1을 확보한다. 회색 본문으로 되돌리지 말 것. */
 const BODY_D = '#e6e8ea';
 
+/* -- 임의 배경색 지원 (2026-08-21 신설) ------------------------------------------
+   기존엔 바탕이 흰색/블랙 두 가지뿐이라 "하늘색으로 해줘" 같은 요청을 못 받았다.
+   brand.bg에 아무 hex나 주면, 그 색의 상대 휘도(WCAG)를 재서 제목·본문·칩 색을
+   자동으로 뒤집는다 - 사용자가 색 대비까지 신경 쓰지 않게 하는 게 요점이다. */
+const hexToRgb = (hex: string): [number, number, number] => {
+  let h = hex.replace('#', '').trim();
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const luminance = (hex: string): number => {
+  const f = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  const [r, g, b] = hexToRgb(hex).map((v) => f(v / 255));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrastRatio = (a: string, b: string): number => {
+  const [l1, l2] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (l1 + 0.05) / (l2 + 0.05);
+};
+const pickOn = (bg: string, dark: string, light: string) =>
+  contrastRatio(bg, dark) >= contrastRatio(bg, light) ? dark : light;
+/* 액센트가 배경에서 안 읽히면(4.5:1 미만) 읽힐 때까지 밝기를 민다 */
+const fitAccent = (accent: string, bg: string): string => {
+  if (contrastRatio(accent, bg) >= 4.5) return accent;
+  const toDarkSide = luminance(bg) > 0.5;
+  let [r, g, b] = hexToRgb(accent);
+  for (let i = 0; i < 24; i++) {
+    const k = toDarkSide ? 0.88 : 1.14;
+    const add = toDarkSide ? 0 : 8;
+    r = Math.max(0, Math.min(255, Math.round(r * k + add)));
+    g = Math.max(0, Math.min(255, Math.round(g * k + add)));
+    b = Math.max(0, Math.min(255, Math.round(b * k + add)));
+    const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+    if (contrastRatio(hex, bg) >= 4.5) return hex;
+  }
+  return pickOn(bg, '#101010', '#ffffff');
+};
+const toCustomBg = (t: Theme, bg: string): Theme => {
+  const ink = pickOn(bg, INK, '#ffffff');
+  const isLightBg = luminance(bg) > 0.5;
+  return {
+    ...t,
+    page: bg,
+    ink,
+    body: isLightBg ? BODY_L : BODY_D,
+    accent: fitAccent(t.accent === t.ink ? ink : t.accent, bg),
+    ring: isLightBg ? 'rgba(16,16,16,0.14)' : 'rgba(255,255,255,0.17)',
+    shadow: isLightBg ? '0 24px 48px -20px rgba(0,0,0,0.35)' : '0 24px 48px -20px rgba(0,0,0,0.9)',
+    chipBg: ink,
+    chipText: pickOn(ink, INK, '#ffffff'),
+  };
+};
+
 const toDark = (t: Theme): Theme => ({
   ...t,
   page: BLACK,
@@ -308,7 +361,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   const base = brand.accent
     ? { ...preset, accent: brand.accent, accentDark: brand.accent }
     : preset;
-  const t = brand.surface === 'dark' ? toDark(base) : base;
+  /* 우선순위: brand.bg(임의 색) > surface:'dark' > 기본 흰 바탕 */
+  const t = brand.bg
+    ? toCustomBg(brand.surface === 'dark' ? toDark(base) : base, brand.bg)
+    : brand.surface === 'dark' ? toDark(base) : base;
 
   /* 흑백 무드는 액센트가 제목 잉크와 같은 색이라(MONO_MOOD) 제목 *강조*가 색으로는 사라진다 —
      기본 무드가 이거라서, 강조 문법을 처음 써본 사람은 아무 일도 안 일어나는 걸 본다(2026-08-13).
@@ -452,15 +508,20 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
        보이는 진짜 원인이었다(2026-08-15, 위치·여백을 아무리 옮겨도 안 고쳐졌다 — "여기다
        뭘 채울래" 반려). 한 줄에 들어가는 한도 안에서 최대한 큰 단을 쓰고, 그것도 안 되는
        (문장형) 문구만 원래 로직(46, 3줄 넘으면 32)으로 내려간다. */
-    const phraseSize = (t: string) => {
-      for (const size of [104, 88, 72, 60]) {
+    const phraseSize = (t: string, f = 1) => {
+      for (const size of [104, 88, 72, 60].map((v) => v * f)) {
         if (lineCount(t, size, TITLE_TRACK, colW - 32) === 1) return size;
+      }
+      /* 2026-08-21 — 후보가 60→46으로 끊겨 있어 열 자 안팎 문구가 46까지 떨어지고 거기서도
+         2줄이 됐다(작아지면서 줄바꿈까지 되는 최악). 두 줄까지 허용하고 그 안에서 최대 단을 쓴다. */
+      for (const size of [72, 64, 58, 52].map((v) => v * f)) {
+        if (lineCount(t, size, TITLE_TRACK, colW - 32) <= 2) return size;
       }
       return lineCount(t, 46, TITLE_TRACK, colW - 32) > 3 ? 32 : 46;
     };
-    const colContentH = (s: { text: string }) => {
-      const size = phraseSize(s.text);
-      return 22 + 14 + lineCount(s.text, size, TITLE_TRACK, colW - 32) * size * 1.25;
+    const colContentH = (s: { text: string }, f = 1) => {
+      const size = phraseSize(s.text, f);
+      return 22 * f + 14 * f + lineCount(s.text, size, TITLE_TRACK, colW - 32) * size * 1.25;
     };
     /* 제목을 고정하고 그 아래만 쌓았더니(2026-08-15) 문구가 짧은 — 실사용 대부분인 — 케이스에서
        카드 하단 거의 절반이 빈 채로 남았다("여따가는 뭐 쓸래" 반려, 스크린샷으로 확인).
@@ -470,18 +531,51 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
        길이에 따라 제목 높이가 카드마다 조금씩(대개 6~10%p) 달라진다 — 그런데 이 카드
        타입은 원래 덱에 한두 장뿐이라(주석 §427) 실제로 부딪힐 일은 드물고, 절반 빈 카드보다
        훨씬 작은 대가다. */
-    const panelH = Math.min(maxPanelH, Math.max(colContentH(left), colContentH(right)));
-    const blockH = titleH + blockGap + panelH + captionBlockH;
+    /* 2026-08-21 — 콘텐츠가 카드의 37%만 차지하고 위아래가 텅 비던 문제("여백을 못 잡는다"
+       반려). 중앙 정렬은 이미 맞았고, 덩어리 자체가 작은 게 원인이었다. steps의 stepsFit과
+       같은 원리로 **남는 공간만큼 제목·문구·간격을 통째로 키운다.** 배율마다 다시 재서
+       안 넘치는 최대값을 고른다 — 키우면 줄바꿈이 늘어나 계산이 어긋나기 때문이다.
+       패널 높이는 콘텐츠에 맞춘다(늘리면 세로 구분선만 길어져 선이 글자 밖으로 튀어나온다). */
+    const fitsAt = (f: number) => {
+      const th = titleLines.reduce((n, l) => n + lineCount(l, 64 * f, TITLE_TRACK, TEXT_W), 0) * 64 * f * TITLE_LH;
+      const ph = Math.max(colContentH(left, f), colContentH(right, f));
+      const cb = hasCaption ? captionGap * f + captionLineH * f : 0;
+      return { total: th + blockGap * f + ph + cb, th, ph, cb };
+    };
+    /* 배율을 키우면 좁은 칸에서 줄바꿈이 터진다 — 실제로 1.3배에서 "강화판이/다"처럼
+       마지막 한 글자가 혼자 떨어져 나갔다(2026-08-21 실측). 높이가 남아도 **좌우 문구가
+       2줄을 넘기면 그 배율은 버린다.** 비교 카드의 생명은 좌우 대칭이라, 한쪽만 3줄이 되면
+       라벨 높이까지 어긋나 카드가 무너진다. */
+    /* lineCount는 한글을 1em으로 단순 계산해서 **실제 렌더보다 줄 수를 적게 센다**
+       (Pretendard 자간 탓. 계산상 2줄인데 실제로 3줄이 나오는 걸 확인했다).
+       그래서 폭을 0.88배로 보수적으로 잡고 판정한다 — 넘치는 쪽이 훨씬 나쁘다. */
+    const SAFE = 0.88;
+    const linesAt = (f: number) => Math.max(
+      lineCount(left.text, phraseSize(left.text, f), TITLE_TRACK, (colW - 32) * SAFE),
+      lineCount(right.text, phraseSize(right.text, f), TITLE_TRACK, (colW - 32) * SAFE),
+    );
+    let cmpFit = 1;
+    for (const f of [1.5, 1.4, 1.3, 1.2, 1.1, 1.0]) {
+      if (fitsAt(f).total <= outerBottom - outerTop && linesAt(f) <= 2) { cmpFit = f; break; }
+    }
+    const m = fitsAt(cmpFit);
+    const titleSize = 64 * cmpFit;
+    /* 박스 판형이라 너무 납작하면 어색하다 — 최소 높이를 준다 */
+    const panelH = Math.min(maxPanelH, Math.max(m.ph + 56 * cmpFit, 260 * cmpFit));
+    const blockH = m.th + blockGap * cmpFit + panelH + m.cb;
     /* [outerTop, outerBottom] 안에서 여백을 반씩 나눴더니 실제로는 안 맞았다 — 마스트헤드
        예약분(outerTop=200)이 하단 안전여백(BOTTOM_SAFE=96)보다 훨씬 커서, 그 존 안에서
        "균등"해도 카드 실제 위/아래 여백은 505:401로 어긋났다(2026-08-15, 그리드 실측으로
        확인 — "두 개 붙잡고 무게중심 못 맞추다" 반려). 카드 실제 양 끝(0, 1350) 기준으로
        위·아래 공백이 같아지는 지점을 먼저 구하고, 마스트헤드·하단 안전영역만 침범하지
        않게 자른다. */
-    const idealCmpTop = (1350 - blockH) / 2;
+    /* 2026-08-21 — 기하 중앙에 정확히 놓으면 아래가 더 비어 보인다. 상단엔 마스트헤드가
+       있어서 시선이 위에 걸리는데 하단은 완전히 비기 때문이다. 시각 중앙은 기하 중앙보다
+       약간 위다 — 남는 여백을 위 45 : 아래 55로 나눈다(옵티컬 센터링). */
+    const idealCmpTop = (1350 - blockH) * 0.45;
     const cmpTop = Math.max(outerTop, Math.min(idealCmpTop, outerBottom - blockH));
-    const panelTop = cmpTop + titleH + blockGap;
-    const captionTop = panelTop + panelH + captionGap;
+    const panelTop = cmpTop + m.th + blockGap * cmpFit;
+    const captionTop = panelTop + panelH + captionGap * cmpFit;
 
     /* 왼쪽 칸은 오른쪽(가운데 VS 배지) 쪽으로 붙여 정렬한다 — 왼쪽 정렬 그대로 두면 짧은
        문구가 칸의 바깥쪽(카드 왼쪽 끝)에 붙고, 오른쪽 칸은 원래도 칸이 배지 바로 옆이라
@@ -489,20 +583,44 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
        한쪽만 배지에 바짝 붙어 보였다(2026-08-15, "수직 중앙선" 반려 — 세로 중앙은 맞았어도
        가로 중앙선 기준 좌우 무게가 안 맞았다). align을 칸마다 반대로 줘서 둘 다 배지를
        마주보게 한다. */
-    const Column: React.FC<{ side: { label: string; text: string }; x: number; align: 'left' | 'right' }> = ({ side, x, align }) => (
+    /* 채운 박스의 바탕과 글자 — 액센트가 있으면 액센트로, 없으면(흑백 무드) 잉크로 채운다.
+       글자색은 그 바탕에서 읽히는 쪽을 고른다(대비 계산). */
+    const factBg = t.accent === t.ink ? t.ink : t.accent;
+    const factInk = pickOn(factBg, INK, '#ffffff');
+    const factSub = factInk === '#ffffff' ? 'rgba(255,255,255,0.72)' : 'rgba(16,16,16,0.62)';
+
+    const Column: React.FC<{ side: { label: string; text: string }; x: number; align: 'left' | 'right'; isFact?: boolean }> = ({ side, x, align, isFact }) => (
       <div
         style={{
+          /* 2026-08-21 — 두 가지를 같이 해결한다.
+             ① justifyContent:'center'로 라벨+문구를 통째로 가운데 두니 좌우 줄 수가 다를 때
+                라벨이 계단처럼 어긋났다 → 라벨을 위에 고정한다.
+             ② 빈 바탕에 글자만 얹으니 여백이 그대로 드러났다(반복 반려). 실제 비교표
+                템플릿은 좌우를 **패널 박스**로 감싸서 공간을 채우고 대비를 준다 —
+                같은 구조를 쓴다. 왼쪽(통념)은 중립 회색, 오른쪽(사실)은 액센트 톤. */
           position: 'absolute', left: x, top: panelTop, width: colW, height: panelH,
-          display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: align === 'right' ? 'flex-end' : 'flex-start',
-          textAlign: align, padding: '0 16px',
+          display: 'flex', flexDirection: 'column', justifyContent: 'center',
+          alignItems: 'center', textAlign: 'center',
+          padding: `${28 * cmpFit}px ${24 * cmpFit}px`,
+          borderRadius: 28,
+          /* 2026-08-21 — 액센트 농도로만 좌우를 나눴더니 **기본 흑백 무드에서 둘 다 회색**이
+             되어 구분이 죽었다. 이 도구는 색을 안 주는 사람이 기본값이다.
+             그래서 색이 아니라 **채움 대비**로 나눈다: 사실 쪽은 채운 박스(진한 바탕 +
+             밝은 글자), 통념 쪽은 빈 박스. 액센트가 있으면 그 색으로 채우고, 없으면
+             잉크로 채운다 — 색이 없어도 구분이 남는다. */
+          background: isFact ? factBg : `color-mix(in srgb, ${t.ink} 4%, ${t.page})`,
+          border: isFact
+            ? `2px solid ${factBg}`
+            : `2px solid color-mix(in srgb, ${t.ink} 16%, ${t.page})`,
         }}
       >
-        <div style={{ fontFamily: 'Pretendard', fontSize: 22, fontWeight: 700, color: t.body, marginBottom: 14 }}>
+        <div style={{ fontFamily: 'Pretendard', fontSize: 22 * cmpFit, fontWeight: 700, color: isFact ? factSub : t.body, marginBottom: 14 * cmpFit }}>
           {side.label}
         </div>
         <div
           style={{
-            fontFamily: 'Pretendard', fontSize: phraseSize(side.text), fontWeight: 800, color: t.ink,
+            fontFamily: 'Pretendard', fontSize: phraseSize(side.text, cmpFit), fontWeight: 800,
+            color: isFact ? factInk : t.ink,
             lineHeight: 1.25, wordBreak: 'keep-all', overflowWrap: 'anywhere',
           }}
         >
@@ -520,7 +638,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         <div style={{ position: 'absolute', left: M, right: M, top: cmpTop }}>
           <div
             style={{
-              fontFamily: 'Pretendard', fontSize: 64, fontWeight: 800, color: t.ink,
+              fontFamily: 'Pretendard', fontSize: titleSize, fontWeight: 800, color: t.ink,
               letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
               wordBreak: 'keep-all', overflowWrap: 'anywhere',
             }}
@@ -532,7 +650,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         </div>
 
         <Column side={left} x={M} align="right" />
-        <Column side={right} x={M + colW + colGap} align="left" />
+        <Column side={right} x={M + colW + colGap} align="left" isFact />
         {/* 구분선 — 컬럼 사이 중앙 */}
         <div
           style={{
@@ -547,7 +665,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             transform: 'translate(-50%, -50%)', width: 68, height: 68, borderRadius: 999,
             background: t.chipBg, color: t.chipText,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: 'Pretendard', fontSize: 22, fontWeight: 800,
+            fontFamily: 'Pretendard', fontSize: 22 * cmpFit, fontWeight: 800,
           }}
         >
           VS
@@ -557,7 +675,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           <div
             style={{
               position: 'absolute', left: M, right: M, top: captionTop,
-              fontFamily: 'Pretendard', fontSize: 28, fontWeight: 500, color: t.body,
+              fontFamily: 'Pretendard', fontSize: 28 * cmpFit, fontWeight: 500, color: t.body,
               textAlign: 'center', wordBreak: 'keep-all',
             }}
           >
@@ -580,18 +698,36 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     const titleBlock = card.title ? titleH + 44 : 0;
     const room = zoneBottom - zoneTop - titleBlock;
 
-    const rowsNeeded = card.steps.map(
-      (s) => Math.max(1, lineCount(s, 40, BODY_TRACK, 1080 - M * 2 - numW)) * 40 * 1.35,
-    );
-    const needed = rowsNeeded.reduce((a, b) => a + b, 0) + rowGap * (card.steps.length - 1);
-    const stepsFit = Math.min(1, room / Math.max(1, needed));
+    /* 2026-08-21 — 두 가지를 같이 고친다.
+       ① 상한이 1이라 '줄이기'만 되고 '키우기'가 안 돼서, 목록 3~5개면 콘텐츠가 카드의
+          40%만 차지하고 나머지가 빈 채로 남았다("배치와 여백이 엉망" 반려).
+       ② 그렇다고 상한만 올리면 터진다 — 줄 수를 40px 기준으로 세는데 실제로는 40*fit로
+          렌더되니, 키울수록 줄바꿈이 늘어나는 걸 계산이 못 따라가 마지막 항목이 화면 밖으로
+          밀렸다(실측). 그래서 **배율마다 그 크기로 다시 세어** 안 넘치는 최대값을 고른다. */
+    const measure = (f: number) => {
+      const rows = card.steps!.map(
+        (s) => Math.max(1, lineCount(s, 40 * f, BODY_TRACK, 1080 - M * 2 - numW)) * 40 * f * 1.35,
+      );
+      return rows.reduce((a, b) => a + b, 0) + rowGap * f * (card.steps!.length - 1);
+    };
+    let stepsFit = 1;
+    for (const f of [1.4, 1.3, 1.2, 1.1, 1.0]) {
+      if ((card.title ? titleH * f + 44 * f : 0) + measure(f) <= zoneBottom - zoneTop) { stepsFit = f; break; }
+    }
+    if (stepsFit === 1) stepsFit = Math.min(1, room / Math.max(1, measure(1)));  // 그래도 넘치면 줄인다
+    const needed = measure(stepsFit);
     const numColor = t.accent === t.ink ? t.ink : t.accent;
 
     /* 목록이 짧으면(3~4개, 대부분 그렇다) 존 하단까지 늘리지 않는다 — 위쪽에 몰려 있고
        아래가 텅 비면 미완성처럼 보인다(2026-08-13 실측 반려). 실제 블록 높이만큼만 잡고
        남는 공간을 위아래로 반씩 나눠, 카드 가운데쯤에 오게 한다. */
-    const blockH = titleBlock + Math.min(room, needed * stepsFit);
-    const stepTop = zoneTop + Math.max(0, (zoneBottom - zoneTop - blockH) / 2);
+    const blockH = (card.title ? titleH * stepsFit + 44 * stepsFit : 0) + Math.min(room, needed);
+    /* 2026-08-21 — 존([zoneTop, zoneBottom]) 안에서 반씩 나누면 카드 실제 여백이 안 맞는다.
+       zoneTop(200, 마스트헤드 예약)이 BOTTOM_SAFE보다 커서, 존 기준 "균등"이 카드에선 위가
+       100px 넘게 더 비는 것으로 나온다(steps 5개 실측). compare가 이미 같은 이유로 카드
+       양 끝(0,1350) 기준 정렬로 바뀌었는데(§2026-08-15) steps만 옛 방식이 남아 있었다. */
+    const idealStepTop = (1350 - blockH) * 0.45;   // 옵티컬 센터링(compare와 동일)
+    const stepTop = Math.max(zoneTop, Math.min(idealStepTop, zoneBottom - blockH));
 
     return (
       <AbsoluteFill style={{ backgroundColor: t.page }}>
