@@ -427,17 +427,36 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   }).join(', ')})`;
 
   const frame = useCurrentFrame();
-  const preset = THEMES[brand.theme ?? 'mono-light'] ?? THEMES['mono-light'];
-  /* brand.accent(hex)로 프리셋 액센트를 덮어쓴다 — 자기 브랜드 색을 쓰라고 열어둔 자리다.
-     바탕(흰색/블랙)은 못 바꾼다: 판형이 흔들리면 카드가 아마추어로 보이고, 무드 정체성은
-     배경이 아니라 액센트 한 색이 내는 게 이 포맷의 원칙이다. */
-  const base = brand.accent
-    ? { ...preset, accent: brand.accent, accentDark: brand.accent }
-    : preset;
-  /* 우선순위: brand.bg(임의 색) > surface:'dark' > 기본 흰 바탕 */
-  const t = brand.bg
-    ? toCustomBg(brand.surface === 'dark' ? toDark(base) : base, brand.bg)
-    : brand.surface === 'dark' ? toDark(base) : base;
+  /* 2026-08-22 — 본문 카드의 색을 무드에서 만든다.
+     그전까지 표지만 무드를 타고 2페이지부터는 옛 프리셋(THEMES) 하나로 갔다. 그래서 덱을
+     넘기면 표지만 무드고 나머지는 무드를 바꿔도 똑같아, 다른 도구가 만든 카드처럼 보였다.
+     본문 카드가 색을 t에서 38곳으로 나눠 쓰고 있으므로 **t를 무드로 조립한다** —
+     그러면 그 38곳을 건드리지 않고도 색이 무드를 따라간다. */
+  const moodAccent = brand.accent ?? mood.강조;
+  const 어두운무드 = luminance(moodBg) < 0.5;
+  const t: Theme = {
+    page: moodBg,
+    /* 미디어 존(클립이 뜨는 자리) — 밝은 무드에서는 잉크로 눌러 창 경계를 세우고,
+       어두운 무드에서는 무드 바탕을 그대로 이어 붙인다(검정 위에 또 검정 존을 얹으면
+       경계가 사라져 오히려 지저분해진다). */
+    topZone: 어두운무드 ? moodBg : (mood.어두운바탕 ?? INK),
+    ink: moodInk,
+    body: moodSub,
+    label: 어두운무드 ? 'rgba(255,255,255,0.64)' : 'rgba(255,255,255,0.72)',
+    labelGlow: 'none',
+    accent: moodAccent,
+    /* 어두운 바탕에서 쓰는 액센트 — 무드가 '사진위강조'로 이미 그 답을 갖고 있다
+       (원색 그대로 얹으면 묻히거나 촌스러워진다는 판단이 정본에 들어 있다). */
+    accentDark: mood.사진위강조 ?? moodAccent,
+    inkDark: '#ffffff',
+    ring: 'rgba(255,255,255,0.14)',
+    shadow: '0 24px 48px -20px rgba(0,0,0,0.62)',
+    /* 칩(CTA 알약·VS 배지)은 바탕과 반대색이라 눈이 간다. 글자색은 **반드시 그 칩 바탕에서**
+       대비를 재서 고른다 — 어두운 무드의 글자색(moodInk)을 그대로 얹었더니 흰 알약에
+       흰 글씨가 되어 CTA 문구와 VS가 통째로 사라졌다(2026-08-22 neon 실측). */
+    chipBg: 어두운무드 ? '#ffffff' : moodInk,
+    chipText: pickOn(어두운무드 ? '#ffffff' : moodInk, INK, '#ffffff'),
+  };
 
   /* 흑백 무드는 액센트가 제목 잉크와 같은 색이라(MONO_MOOD) 제목 *강조*가 색으로는 사라진다 —
      기본 무드가 이거라서, 강조 문법을 처음 써본 사람은 아무 일도 안 일어나는 걸 본다(2026-08-13).
@@ -682,7 +701,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         >
           <div
             style={{
-              fontFamily: 'Pretendard', fontSize: 92 * ctaFit, fontWeight: 800, color: inkC,
+              fontFamily: look.제목글꼴, fontSize: 92 * ctaFit, fontWeight: look.제목굵기, color: inkC,
               letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
               // keep-all은 어절을 지키지만, 띄어쓰기 없는 긴 덩어리(URL 등)는 컬럼 밖으로 흘러나간다.
               // anywhere를 같이 주면 평소엔 어절을 지키고 넘칠 때만 끊는다.
@@ -700,7 +719,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
                 <div
                   key={i}
                   style={{
-                    fontFamily: 'Pretendard', fontSize: 42 * ctaFit, fontWeight: 400, color: t.body,
+                    fontFamily: look.본문글꼴, fontSize: 42 * ctaFit, fontWeight: 400, color: t.body,
                     lineHeight: 1.6, wordBreak: 'keep-all', overflowWrap: 'anywhere',
                     letterSpacing: `${BODY_TRACK}em`,
                   }}
@@ -716,7 +735,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
               marginTop: 58 * ctaFit, padding: `${26 * ctaFit}px ${46 * ctaFit}px`, borderRadius: 999,
               background: pillBg, color: pillFg,
               display: 'flex', alignItems: 'center', gap: 16 * ctaFit,
-              fontFamily: 'Pretendard', fontSize: 40 * ctaFit, fontWeight: 800, letterSpacing: '-0.02em',
+              fontFamily: look.본문글꼴, fontSize: 40 * ctaFit, fontWeight: 800, letterSpacing: '-0.02em',
             }}
           >
             <span>{pillText}</span>
@@ -863,12 +882,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             : `2px solid color-mix(in srgb, ${t.ink} 16%, ${t.page})`,
         }}
       >
-        <div style={{ fontFamily: 'Pretendard', fontSize: 22 * cmpFit, fontWeight: 700, color: isFact ? factSub : t.body, marginBottom: 14 * cmpFit }}>
+        <div style={{ fontFamily: look.본문글꼴, fontSize: 22 * cmpFit, fontWeight: 700, color: isFact ? factSub : t.body, marginBottom: 14 * cmpFit }}>
           {side.label}
         </div>
         <div
           style={{
-            fontFamily: 'Pretendard', fontSize: phraseSize(side.text, cmpFit), fontWeight: 800,
+            fontFamily: look.본문글꼴, fontSize: phraseSize(side.text, cmpFit), fontWeight: 800,
             color: isFact ? factInk : t.ink,
             lineHeight: 1.25, wordBreak: 'keep-all', overflowWrap: 'anywhere',
           }}
@@ -887,7 +906,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         <div style={{ position: 'absolute', left: M, right: M, top: cmpTop }}>
           <div
             style={{
-              fontFamily: 'Pretendard', fontSize: titleSize, fontWeight: 800, color: t.ink,
+              fontFamily: look.제목글꼴, fontSize: titleSize, fontWeight: look.제목굵기, color: t.ink,
               letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
               wordBreak: 'keep-all', overflowWrap: 'anywhere',
             }}
@@ -914,7 +933,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             transform: 'translate(-50%, -50%)', width: 68, height: 68, borderRadius: 999,
             background: t.chipBg, color: t.chipText,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: 'Pretendard', fontSize: 22 * cmpFit, fontWeight: 800,
+            fontFamily: look.본문글꼴, fontSize: 22 * cmpFit, fontWeight: 800,
           }}
         >
           VS
@@ -924,7 +943,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           <div
             style={{
               position: 'absolute', left: M, right: M, top: captionTop,
-              fontFamily: 'Pretendard', fontSize: 28 * cmpFit, fontWeight: 500, color: t.body,
+              fontFamily: look.본문글꼴, fontSize: 28 * cmpFit, fontWeight: 500, color: t.body,
               textAlign: 'center', wordBreak: 'keep-all',
             }}
           >
@@ -1011,7 +1030,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           {card.title ? (
             <div
               style={{
-                fontFamily: 'Pretendard', fontSize: 60 * stepsFit, fontWeight: 800, color: t.ink,
+                fontFamily: look.제목글꼴, fontSize: 60 * stepsFit, fontWeight: look.제목굵기, color: t.ink,
                 letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH, marginBottom: titleGap * stepsFit,
                 wordBreak: 'keep-all', overflowWrap: 'anywhere',
               }}
@@ -1041,14 +1060,14 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
                   width: badge * stepsFit, height: badge * stepsFit, flexShrink: 0, borderRadius: 16,
                   background: numBg, color: numInk,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontFamily: 'Pretendard', fontSize: 28 * stepsFit, fontWeight: 800, letterSpacing: '-0.02em',
+                  fontFamily: look.본문글꼴, fontSize: 28 * stepsFit, fontWeight: 800, letterSpacing: '-0.02em',
                 }}
               >
                 {String(i + 1).padStart(2, '0')}
               </div>
               <div
                 style={{
-                  fontFamily: 'Pretendard', fontSize: 40 * stepsFit, fontWeight: 500, color: t.ink,
+                  fontFamily: look.본문글꼴, fontSize: 40 * stepsFit, fontWeight: 500, color: t.ink,
                   lineHeight: 1.35, wordBreak: 'keep-all', overflowWrap: 'anywhere',
                 }}
               >
@@ -1129,7 +1148,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           {card.label ? (
             <div
               style={{
-                fontFamily: 'Pretendard', fontSize: 25 * fit, fontWeight: 700,
+                fontFamily: look.본문글꼴, fontSize: 25 * fit, fontWeight: 700,
                 letterSpacing: '-0.005em', color: 'rgba(255,255,255,0.66)', marginBottom: 18 * fit,
               }}
             >
@@ -1138,7 +1157,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           ) : null}
           <div
             style={{
-              fontFamily: 'Pretendard', fontSize: TITLE_SIZE * fit, fontWeight: 800, color: '#ffffff',
+              fontFamily: look.제목글꼴, fontSize: TITLE_SIZE * fit, fontWeight: look.제목굵기, color: '#ffffff',
               letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
               wordBreak: 'keep-all', overflowWrap: 'anywhere',
               textShadow: '0 2px 24px rgba(0,0,0,0.45)',
@@ -1154,7 +1173,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
                 <div
                   key={i}
                   style={{
-                    fontFamily: 'Pretendard', fontSize: BODY_SIZE * fit, fontWeight: 400, color: BODY_D,
+                    fontFamily: look.본문글꼴, fontSize: BODY_SIZE * fit, fontWeight: 400, color: BODY_D,
                     lineHeight: BODY_LH, wordBreak: 'keep-all', overflowWrap: 'anywhere',
                     letterSpacing: `${BODY_TRACK}em`, textShadow: '0 1px 16px rgba(0,0,0,0.45)',
                   }}
@@ -1210,7 +1229,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         <div
           style={{
             position: 'absolute', left: M, top: labelTop, right: M,
-            fontFamily: 'Pretendard', fontSize: 25, fontWeight: 700, letterSpacing: '-0.005em',
+            fontFamily: look.본문글꼴, fontSize: 25, fontWeight: 700, letterSpacing: '-0.005em',
             /* 출처 캡션은 정보지 강조가 아니다 — 액센트 색을 쓰지 않고 조용한 흰색으로.
                강조는 본문 굵기로 준다(2026-07-31 반려). 캡션은 늘 블랙 존 위에 놓인다. */
             color: 'rgba(255,255,255,0.56)',
@@ -1224,7 +1243,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
       <div style={{ position: 'absolute', left: M, right: M, top: textTop }}>
         <div
           style={{
-            fontFamily: 'Pretendard', fontSize: TITLE_SIZE * fit, fontWeight: 800, color: t.ink,
+            fontFamily: look.제목글꼴, fontSize: TITLE_SIZE * fit, fontWeight: look.제목굵기, color: t.ink,
             letterSpacing: '-0.035em', lineHeight: TITLE_LH, wordBreak: 'keep-all',
           }}
         >
@@ -1253,7 +1272,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
               <div
                 key={i}
                 style={{
-                  fontFamily: 'Pretendard', fontSize: BODY_SIZE * fit, fontWeight: 400, color: t.body,
+                  fontFamily: look.본문글꼴, fontSize: BODY_SIZE * fit, fontWeight: 400, color: t.body,
                   lineHeight: BODY_LH, wordBreak: 'keep-all', overflowWrap: 'anywhere',
                   letterSpacing: `${BODY_TRACK}em`,
                 }}
