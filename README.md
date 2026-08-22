@@ -11,7 +11,7 @@
 Node.js·git 몰라도 됩니다. Claude Code를 켠 상태에서(터미널에 `claude` 입력 후) 두 줄만 칩니다:
 
 ```
-/plugin marketplace add anharu-dev/haru-cardnews
+/plugin marketplace add anharudev/haru-cardnews
 /plugin install haru-cardnews@haru-cardnews
 ```
 
