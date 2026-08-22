@@ -84,6 +84,8 @@ export type Mood = {
   제목행간: number; 본문행간: number; 제목배율?: number; 본문배율?: number;
   킥라벨색?: string;
   룩: string; 사진씀: boolean;
+  테두리?: string;
+  사진처리?: '하단스크림' | '상단박스' | '전면틴트' | '흑백스크림';
 };
 
 /** 룩 — 타이포와 레이아웃. 색은 포함하지 않는다. */
@@ -417,6 +419,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     { 위치: '58%', 세기배수: 0.42 }, { 위치: '80%', 세기배수: 0.95 },
     { 위치: '100%', 세기배수: 1.08, 상한: 0.92 },
   ] };
+  const tintStrength = scrimProp ? (scrimProp as any).전면틴트세기 ?? 0.52 : 0.52;
+  const boxPhotoH = scrimProp ? (scrimProp as any).상단박스사진높이 ?? 700 : 700;
   const scrimCss = `linear-gradient(to bottom, ${scrimDoc.정지점.map((st) => {
     const a = Math.max(0, Math.min(st.상한 ?? 1, scrimDoc.기본세기 * st.세기배수));
     return `rgba(0,0,0,${a}) ${st.위치}`;
@@ -464,26 +468,26 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   const blocks = toBlocks(card.body);
   const titleLines = card.title.split('\n');
 
-  /* ── 표지(cover) — 무드 한 벌이 색·글꼴·레이아웃을 함께 정한다 ──────────────────
-     2026-08-22 재작성. 처음엔 여기에 minimal/frame/solid/photo라는 골격 4종을 직접 만들었는데,
-     내부 디자인 시스템에 이미 무드 11종 × 룩 3종이 2026-07-31부터 있었다.
-     그쪽 정의를 public/moods.json 정본으로 들여오고, 이 자리는 그 정본을 그리기만 한다.
+  /* ── 표지(cover) — 무드 한 벌이 색·글꼴·레이아웃·사진처리를 함께 정한다 ──────────
+     정의는 public/moods.json 정본에 있고 여기는 그리기만 한다.
 
-     무드가 색(바탕·글자·강조·사진위강조)과 강조 방식(색 / 형광펜)을 정하고,
-     룩(impact·magazine·minimal)이 글꼴·제목위치·정렬·자간·행간·여백을 정한다.
-     여기서 새 색이나 새 배치를 발명하지 않는다 — 그러면 정의가 두 벌이 되고, 그게
-     오늘 하루를 통째로 날린 원인이다. */
+     2026-08-22 2차 수정 — 사진만 있으면 무드와 무관하게 같은 하단 스크림을 깔고 있었다.
+     무드가 11개인데 사진 처리가 하나면 사진 표지에서 전부 같아 보인다("모든 무드에
+     그라데이션 다 깔아?" 반려). 무드마다 사진 다루는 법을 따로 준다:
+       하단스크림  아래를 덮고 글자를 아래 붙인다 (impact 계열)
+       상단박스    사진은 위, 글자는 아래 무드 바탕색 위 — 무드 색이 실제로 보인다
+       전면틴트    사진 전체를 고르게 눕히고 글자를 가운데 (화보)
+       흑백스크림  사진을 흑백으로 바꾼 뒤 하단스크림 (흑백 무드의 정체성) */
   if (card.cover) {
-    const bandOnPhoto = !!clipSrc;
-    const ink = bandOnPhoto ? '#ffffff' : moodInk;
-    const sub = bandOnPhoto ? 'rgba(255,255,255,0.80)' : moodSub;
-    /* 사진 위에서는 무드가 따로 정해둔 강조색을 쓴다. 원색을 그대로 얹으면 어두운 사진에서
-       묻히거나 촌스러워진다 — 무드마다 그 답이 다르고(흑백은 흰색, 크림은 모래빛),
-       그 판단이 이미 정본에 들어 있다. null이면 강조를 안 칠한다(형광펜 무드). */
+    const 처리 = clipSrc ? (mood.사진처리 ?? '하단스크림') : '없음';
+    const 박스 = 처리 === '상단박스';
+    /* 글자가 사진 위에 직접 얹히는 처리들. 상단박스는 글자가 색면 위에 있으므로 여기 안 든다. */
+    const 사진위글자 = 처리 === '하단스크림' || 처리 === '전면틴트' || 처리 === '흑백스크림';
+
+    const ink = 사진위글자 ? '#ffffff' : moodInk;
+    const sub = 사진위글자 ? 'rgba(255,255,255,0.80)' : moodSub;
     const emphOnPhoto = mood.사진위강조;
 
-    /* 제목 강조 — 형광펜 무드는 글자 뒤에 색면을 깐다(사진 위에서도 그대로 읽힌다:
-       색면이 배경을 가리므로). 나머지는 색으로 칠한다. */
     const coverEmph: CSSProperties =
       mood.강조방식 === '형광펜'
         ? {
@@ -491,64 +495,86 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             borderRadius: 6, padding: '0.02em 0.12em',
             boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone',
           }
-        : { color: bandOnPhoto ? (emphOnPhoto ?? ink) : mood.강조 };
+        : { color: 사진위글자 ? (emphOnPhoto ?? ink) : mood.강조 };
 
-    /* 레이아웃은 룩이 정한다. 제목이 아래에 붙는 룩(impact)이 사진 표지의 기본형이다 —
-       위쪽 사진을 살리고 아래만 스크림으로 덮는 문법이라 둘이 짝을 이룬다. */
-    const pad = look.여백 + 32;   // 표지·본문·마무리가 전부 같은 좌측 기준선을 쓴다
-    /* 사진 위에서는 글자를 **무조건 아래에 붙인다** — 룩이 위·가운데를 지정해도 무시한다.
-       스크림이 하단에만 깔려서 위쪽에 글자를 두면 밝은 사진에 흰 글씨가 묻히고, 인물 사진이면
-       중앙에 뜬 글자가 얼굴을 덮는다(원본 CoverCard.tsx의 규칙, 2026-08-01 반려로 정해졌다).
-       처음 옮길 때 이 한 줄을 빠뜨려서 press·editorial·fashion 표지 글자가 실제로 안 읽혔다. */
-    const justify = bandOnPhoto
-      ? 'flex-end'
+    const pad = look.여백 + 32;
+    /* 사진 위에 글자를 얹는 처리에서는 룩의 제목위치를 무시한다.
+       하단스크림·흑백스크림은 스크림이 아래에만 깔리므로 글자도 아래여야 하고(위에 두면
+       밝은 사진에 흰 글씨가 묻힌다, 인물이면 얼굴을 덮는다 — 2026-08-01 반려),
+       전면틴트는 전체가 고르게 눕혀져 있으므로 화보처럼 가운데에 둔다.
+       상단박스는 글자가 색면 위에 있어 안전하므로 룩을 그대로 따른다. */
+    const justify =
+      처리 === '전면틴트' ? 'center'
+      : 사진위글자 ? 'flex-end'
       : look.제목위치 === 'top' ? 'flex-start' : look.제목위치 === 'center' ? 'center' : 'flex-end';
-    const alignItems = look.정렬 === 'center' ? 'center' : 'flex-start';
+    const alignItems = 처리 === '전면틴트' ? 'center' : look.정렬 === 'center' ? 'center' : 'flex-start';
+    const textAlign = 처리 === '전면틴트' ? 'center' : look.정렬 === 'center' ? 'center' : 'left';
+
     const titleSize = 92 * look.제목배율 * (mood.제목배율 ?? 1);
     const bodySize = 40 * look.본문배율 * (mood.본문배율 ?? 1);
 
-    /* 넘치면 줄인다. 표지는 글이 짧아 대개 1이고, 긴 제목만 내려온다. */
-    const room = 1350 - pad * 2 - (card.kicker ? 90 : 0) - (card.body.length ? 120 : 0);
+    /* 상단박스는 글자가 아래 색면 안에서만 살아야 한다 — 그 높이로 넘침을 잰다. */
+    const 박스사진H = scrimDoc && 박스 ? (boxPhotoH ?? 700) : 0;
+    const room = (박스 ? 1350 - 박스사진H - pad : 1350 - pad * 2)
+      - (card.kicker ? 90 : 0) - (card.body.length ? 120 : 0);
+    const track = look.제목자간 === '0' ? 0 : parseFloat(look.제목자간);
     const titleH = titleLines.reduce(
-      (n, l) => n + lineCount(l, titleSize, look.제목자간 === '0' ? 0 : parseFloat(look.제목자간), 1080 - pad * 2), 0,
+      (n, l) => n + lineCount(l, titleSize, track, 1080 - pad * 2), 0,
     ) * titleSize * mood.제목행간;
     const fit = Math.min(1, room / Math.max(1, titleH));
 
+    const media = (extra?: CSSProperties) =>
+      isImageClip ? (
+        <Img src={staticFile(clipSrc)} style={{ width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${kb})`, ...extra }} />
+      ) : (
+        <OffthreadVideo src={staticFile(clipSrc)} muted style={{ width: '100%', height: '100%', objectFit: 'cover', ...extra }} />
+      );
+
     return (
-      <AbsoluteFill style={{ backgroundColor: mood.바탕 }}>
-        {/* 사진 — 카드를 꽉 채우고, 그 위에 하단 스크림이 깔린다.
-            상단 38%는 완전 투명이다(정본 §사진스크림): 예전엔 위에도 0.28을 깔았다가
-            사진 전체가 뿌옇게 죽어서 걷어냈다. 인물 사진에서 얼굴이 안 살았다. */}
-        {clipSrc ? (
+      <AbsoluteFill style={{ backgroundColor: moodBg }}>
+        {처리 === '상단박스' ? (
+          <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 박스사진H, overflow: 'hidden' }}>
+            {media()}
+          </div>
+        ) : clipSrc ? (
           <>
-            {isImageClip ? (
-              <Img src={staticFile(clipSrc)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${kb})` }} />
-            ) : (
-              <OffthreadVideo src={staticFile(clipSrc)} muted style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
-            )}
-            <div style={{ position: 'absolute', inset: 0, background: scrimCss }} />
+            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+              {/* 흑백 무드는 사진까지 흑백으로 간다 — 색을 안 쓰는 게 정체성인데 사진만
+                  총천연색이면 그 무드를 고른 이유가 사라지고, 블랙+골드와 구분도 안 된다. */}
+              {media(처리 === '흑백스크림' ? { filter: 'grayscale(1)' } : undefined)}
+            </div>
+            <div
+              style={{
+                position: 'absolute', inset: 0,
+                background: 처리 === '전면틴트' ? `rgba(0,0,0,${tintStrength})` : scrimCss,
+              }}
+            />
           </>
+        ) : (
+          <Grain level={brand.texture} />
+        )}
+
+        {/* 무드가 테두리를 정해두면 안쪽에 얇은 선을 두른다(블랙+골드의 금테). */}
+        {mood.테두리 ? (
+          <div style={{ position: 'absolute', inset: 34, border: `2px solid ${mood.테두리}`, pointerEvents: 'none' }} />
         ) : null}
-        {!clipSrc ? <Grain level={brand.texture} /> : null}
 
         <div
           style={{
-            position: 'absolute', inset: 0, padding: pad,
+            position: 'absolute', left: 0, right: 0,
+            top: 박스 ? 박스사진H : 0, bottom: 0, padding: pad,
             display: 'flex', flexDirection: 'column',
-            justifyContent: justify, alignItems,
-            textAlign: look.정렬 === 'center' ? 'center' : 'left',
+            justifyContent: 박스 ? 'center' : justify, alignItems, textAlign,
           }}
         >
-          {/* 킥 라벨 — 무드가 색을 따로 정해두면 그 색으로(신문 섹션 머리글이 원래 그 언어다).
-              사진 위에서는 반투명 알약으로 띄운다. */}
           {card.kicker ? (
             <div
               style={{
                 display: 'inline-block', marginBottom: 26,
-                padding: bandOnPhoto ? '12px 24px' : '0',
+                padding: 사진위글자 ? '12px 24px' : '0',
                 borderRadius: 999,
-                background: bandOnPhoto ? 'rgba(255,255,255,0.18)' : 'transparent',
-                color: mood.킥라벨색 ?? (bandOnPhoto ? '#ffffff' : mood.강조),
+                background: 사진위글자 ? 'rgba(255,255,255,0.20)' : 'transparent',
+                color: 사진위글자 ? '#ffffff' : (mood.킥라벨색 ?? mood.강조),
                 fontFamily: look.본문글꼴, fontSize: 30, fontWeight: 700, letterSpacing: '-0.02em',
               }}
             >
@@ -580,17 +606,21 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           ) : null}
         </div>
 
-        {/* 발신자 — 레퍼런스는 대부분 하단에 둔다 */}
-        <div
-          style={{
-            position: 'absolute', left: 0, right: 0, bottom: 44, textAlign: 'center',
-            fontFamily: look.본문글꼴, fontSize: 25, fontWeight: 600,
-            color: bandOnPhoto ? 'rgba(255,255,255,0.72)' : moodSub,
-            letterSpacing: '0.08em',
-          }}
-        >
-          {brand.wordmark ?? brand.handle ?? ''}
-        </div>
+        {/* 발신자 표기는 **기본으로 안 찍는다**(2026-08-22). 예전엔 모든 표지 하단에 핸들을
+            박았는데, 남의 계정 이름을 카드마다 새기는 건 그 사람이 원할 때만 할 일이다.
+            덱에서 brand.showHandle을 켠 사람만 나온다 — 인터뷰가 물어보고 정한다. */}
+        {brand.showHandle && (brand.wordmark ?? brand.handle) ? (
+          <div
+            style={{
+              position: 'absolute', left: 0, right: 0, bottom: 44, textAlign: 'center',
+              fontFamily: look.본문글꼴, fontSize: 25, fontWeight: 600,
+              color: 사진위글자 ? 'rgba(255,255,255,0.72)' : moodSub,
+              letterSpacing: '0.08em',
+            }}
+          >
+            {brand.wordmark ?? brand.handle}
+          </div>
+        ) : null}
       </AbsoluteFill>
     );
   }
