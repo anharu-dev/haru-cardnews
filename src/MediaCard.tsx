@@ -198,40 +198,11 @@ const Badge: React.FC<{ text?: string; bg: string; fg: string }> = ({ text, bg, 
    - 무드 정체성은 배경이 아니라 **액센트 한 색**이 낸다.
    - 판형은 무드와 무관하게 하나다(2026-08-01): 상단 블랙 존 + 하단 순백. 라이트/다크 교대는 폐기. */
 const BLACK = '#0d0d0d';        // 상단 미디어 존 공용 중립 블랙
-const INK = '#101010';          // 제목 잉크
-const BODY_L = '#2b2f33';       // 본문 — 흰 바탕 대비 13:1 (2026-08-01: #43474b에서 더 진하게)
 
-/* 판형 통일 (2026-08-01 반려 — "하단 텍스트 배경 화이트로, 대비 높여").
-   예전엔 다크 3종이 통짜 블랙이라 본문이 회색(#b7bbc0)으로 떠서 흐릿했다.
-   이제 **모든 무드가 같은 판형**이다: 상단 = 블랙 존(자료 창 + 출처 캡션), 하단 = 순백 + 진한 잉크.
-   무드 정체성은 배경이 아니라 **액센트 한 색**이 낸다 — 그래서 액센트는 전부 흰 바탕에서
-   읽히는 채도로 다시 잡았다(옛 다크 전용 액센트는 흰 바탕에서 물에 탄 것처럼 보였다). */
-const makeTheme = (o: {
-  label: string; accent: string; accentDark?: string; inkDark?: string;
-  ring?: string; shadow?: string; chipBg?: string; chipText?: string;
-}): Theme => ({
-  page: '#ffffff',
-  topZone: BLACK,
-  ink: INK,
-  body: BODY_L,
-  label: o.label,
-  labelGlow: 'none',
-  accent: o.accent,
-  accentDark: o.accentDark ?? o.accent,
-  inkDark: o.inkDark ?? '#ffffff',
-  ring: o.ring ?? 'rgba(255,255,255,0.14)',
-  shadow: o.shadow ?? '0 24px 48px -20px rgba(0,0,0,0.62)',
-  chipBg: o.chipBg ?? BLACK,
-  chipText: o.chipText ?? '#e9eaec',
-});
+/* 색 상수 — 무드가 색을 정하지만, 대비 계산의 기준점과 전면 판형 본문색은 고정이다. */
+const INK = '#101010';          // 제목 잉크(밝은 바탕에서의 기준 어두운색)
 
-const MONO_MOOD = makeTheme({
-  label: 'rgba(255,255,255,0.64)', accent: INK,
-  // 통짜 블랙에서 흑백 무드는 '흰 하이라이트 vs 조금 죽인 제목'으로 대비를 낸다
-  accentDark: '#ffffff', inkDark: '#d5d8db',
-});
-
-/* 통짜 블랙 판형 (2026-08-05 제작자 지시 — 이 덱 포함 3편 시험).
+/* 어두운 무드의 본문 색 (2026-08-05).
    2026-08-01에 다크를 폐기한 이유는 '검정이라서'가 아니라 **본문이 #b7bbc0 회색으로 떠서 흐릿**했기 때문이다.
    그래서 부활시키되 본문을 #e6e8ea로 올려 대비 15:1을 확보한다. 회색 본문으로 되돌리지 말 것. */
 const BODY_D = '#e6e8ea';
@@ -273,61 +244,9 @@ const fitAccent = (accent: string, bg: string): string => {
   }
   return pickOn(bg, '#101010', '#ffffff');
 };
-const toCustomBg = (t: Theme, bg: string): Theme => {
-  const ink = pickOn(bg, INK, '#ffffff');
-  const isLightBg = luminance(bg) > 0.5;
-  return {
-    ...t,
-    page: bg,
-    ink,
-    body: isLightBg ? BODY_L : BODY_D,
-    accent: fitAccent(t.accent === t.ink ? ink : t.accent, bg),
-    ring: isLightBg ? 'rgba(16,16,16,0.14)' : 'rgba(255,255,255,0.17)',
-    shadow: isLightBg ? '0 24px 48px -20px rgba(0,0,0,0.35)' : '0 24px 48px -20px rgba(0,0,0,0.9)',
-    chipBg: ink,
-    chipText: pickOn(ink, INK, '#ffffff'),
-  };
-};
 
-const toDark = (t: Theme): Theme => ({
-  ...t,
-  page: BLACK,
-  ink: t.inkDark,
-  body: BODY_D,
-  accent: t.accentDark,
-  ring: 'rgba(255,255,255,0.17)',
-  shadow: '0 24px 48px -20px rgba(0,0,0,0.9)',
-  // 알약·코드칩은 바탕과 반대색이라 블랙 판형에선 흰색으로 뒤집힌다
-  chipBg: '#ffffff',
-  chipText: BLACK,
-});
 
-const THEMES: Record<string, Theme> = {
-  'mono-light': MONO_MOOD,
-  // Anthropic·Claude 주제 전용 — 코랄
-  claude: makeTheme({ label: '#e08a6b', accent: '#c2572f', accentDark: '#f08b64' }),
-  // OpenAI·GPT 주제 전용 — 안하루 딥코발트
-  gpt: makeTheme({ label: '#7aa5f5', accent: '#0047ab', accentDark: '#7aa5f5' }),
-  // 임팩트 속보 — 레드(흰 바탕용으로 채도를 낮춰 잡았다. #ff2e4d는 흰 바탕에서 3.7:1로 흐리다)
-  neon: makeTheme({
-    label: '#ff5c74',
-    accent: '#d40f2c',
-    accentDark: '#ff2e4d',      // 검정에선 원래의 네온 레드가 산다
-    ring: 'rgba(255,46,77,0.34)',
-    // 창 주변 붉은 발광은 반려됐다 — 임팩트는 ring 한 줄로 낸다. 글로우는 AI 슬롭의 표식이다.
-    shadow: '0 24px 48px -20px rgba(0,0,0,0.75)',
-  }),
-  // Google·Gemini 주제 전용 — 구글 블루(흰 바탕용 진한 톤)
-  gemini: makeTheme({ label: '#7ab6f0', accent: '#1263cf', accentDark: '#5b9dfa' }),
-};
 
-/* 2026-08-22 — 여기 'mono-dark' / 'white' / 'ink' / 'dark' 네 이름이 전부 MONO_MOOD를
-   가리키는 별칭으로 있었다. 이름이 9개인데 결과는 5가지라, 배포하면 사용자는 "dark를
-   골랐는데 왜 안 어둡지"에서 막힌다 — 조용히 흑백 라이트가 나오니 원인도 안 보인다.
-   무드는 **액센트 한 색만** 정하고, 밝기는 surface·bg가 정한다(축이 둘). 별칭을 지워
-   그 경계를 흐리지 않는다. 어둡게 하려면 surface:'dark' 또는 bg를 쓴다.
-   쓰는 덱이 하나도 없는 걸 확인하고 지웠다. */
-export const MOOD_NAMES = Object.keys(THEMES);
 
 /** 본문 줄 중 '명령어/경로'인 줄 — 회색 본문으로 흘리지 않고 코드 칩으로 묶어 보여준다. */
 const isCodeLine = (s: string) =>
@@ -407,8 +326,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   };
   /* brand.bg를 주면 무드 바탕을 덮는다 — 무드는 한 벌이지만 바탕만 바꾸고 싶을 때가 있다.
      그때 글자색은 그 바탕에서 읽히는 쪽으로 다시 고른다(사용자가 대비를 계산하지 않게). */
-  /* ⚠️ 여기 'AI 안하루'가 폴백으로 박혀 있었다(5곳). 남이 이 도구를 쓰면 자기 카드에
-     남의 채널명이 찍히는 사고다 — 인터뷰로만 막고 코드는 그대로였다. 폴백을 없애고,
+  /* ⚠️ 여기 'AI 안하루'가 폴백으로 박혀 있었다(5곳). 이 도구를 받은 사람 카드에
+     만든 사람의 채널명이 찍히는 사고다 — 인터뷰로만 막고 코드는 그대로였다. 폴백을 없애고,
      계정 표기는 showHandle을 켠 사람에게만 나간다(2026-08-22). */
   const mastheadText = brand.showHandle ? (brand.wordmark ?? brand.handle) : undefined;
 
@@ -563,7 +482,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
       <AbsoluteFill style={{ backgroundColor: moodBg }}>
         {처리 === '상단박스' ? (
           /* 사진을 카드 폭에 꽉 채워 반으로 자르면, 사진과 색면이 아무 관계 없이 위아래로
-             붙어 있는 꼴이 된다("반려" 반려, 2026-08-22). 미리캔버스 레퍼런스는
+             붙어 있는 꼴이 된다(2026-08-22 반려). 레퍼런스 템플릿은
              전부 사진을 **라운드 박스에 넣어 색면 위에 얹는다** — 그래야 색면이 배경으로
              읽히고 사진이 그 위의 요소가 된다. 좌우·위에 여백을 두고 모서리를 굴린다. */
           <div

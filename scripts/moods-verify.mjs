@@ -1,18 +1,26 @@
 /*
- * 무드 정본(public/moods.json)을 내부 디자인 시스템 원본(src/lib/moods.ts·looks.ts)과 대조한다.
+ * 무드 정본(public/moods.json)을 원본 디자인 시스템(src/lib/moods.ts·looks.ts)과 대조한다.
  *
  * 왜 필요한가: 무드 값을 손으로 옮겼다. 손으로 옮기면 반드시 어딘가 틀린다 —
  * 실제로 사진 스크림의 상단 정지점을 주석만 보고 0.16으로 잘못 적었다(원본은 0).
  * 색 하나가 어긋나면 렌더 결과가 조용히 달라지고, 눈으로는 며칠 뒤에나 눈치챈다.
  *
- * 원본 경로는 제작자 컴퓨터에만 있다 — 없으면 조용히 건너뛴다(배포본에서 실패하면 안 된다).
+ * 원본은 이 저장소에 없다 — 경로를 안 주면 조용히 건너뛴다(배포본에서 실패하면 안 된다).
  *   node scripts/moods-verify.mjs [원본레포경로]
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-const REPO = process.argv[2]
-  ?? '<원본 디자인 시스템 경로>
+/* 원본 레포 경로는 코드에 박지 않는다 — 이 저장소는 공개되고, 남의 컴퓨터 경로는
+   그 사람 사용자명과 내부 폴더 구조를 그대로 드러낸다(2026-08-22).
+   인자나 환경변수로 받고, 없으면 조용히 건너뛴다. */
+const REPO = process.argv[2] ?? process.env.HARU_MOODS_SOURCE;
+if (!REPO) {
+  console.log('원본 레포 경로가 없어 대조를 건너뜁니다.');
+  console.log('  사용법: node scripts/moods-verify.mjs <원본레포경로>');
+  console.log('  또는 환경변수 HARU_MOODS_SOURCE 에 지정하세요.');
+  process.exit(0);
+}
 
 const moodsPath = join(REPO, 'src', 'lib', 'moods.ts');
 const looksPath = join(REPO, 'src', 'lib', 'looks.ts');
