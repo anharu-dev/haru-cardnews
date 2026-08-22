@@ -436,21 +436,26 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   const 어두운무드 = luminance(moodBg) < 0.5;
   const t: Theme = {
     page: moodBg,
-    /* 미디어 존(클립이 뜨는 자리) — 밝은 무드에서는 잉크로 눌러 창 경계를 세우고,
-       어두운 무드에서는 무드 바탕을 그대로 이어 붙인다(검정 위에 또 검정 존을 얹으면
-       경계가 사라져 오히려 지저분해진다). */
-    topZone: 어두운무드 ? moodBg : (mood.어두운바탕 ?? INK),
+    /* 미디어 존(상단 색면)은 **안 깐다**(2026-08-22). 흰 카드 하나뿐이던 시절엔 상단을
+       잉크로 눌러 창 경계를 세우고 캡션을 얹는 자리였는데, 무드가 생긴 지금은 그 역할을
+       무드 바탕이 한다. 그대로 두면 흰·크림 무드에서 2페이지 상단만 검은 띠로 나와
+       표지에서 넘어올 때 무드가 뚝 끊긴다("톤이 튄다"). 경계는 창 테두리가 세운다. */
+    topZone: null,
     ink: moodInk,
     body: moodSub,
-    label: 어두운무드 ? 'rgba(255,255,255,0.64)' : 'rgba(255,255,255,0.72)',
+    label: moodSub,
     labelGlow: 'none',
     accent: moodAccent,
     /* 어두운 바탕에서 쓰는 액센트 — 무드가 '사진위강조'로 이미 그 답을 갖고 있다
        (원색 그대로 얹으면 묻히거나 촌스러워진다는 판단이 정본에 들어 있다). */
     accentDark: mood.사진위강조 ?? moodAccent,
     inkDark: '#ffffff',
-    ring: 'rgba(255,255,255,0.14)',
-    shadow: '0 24px 48px -20px rgba(0,0,0,0.62)',
+    /* 창 헤어라인 — 색면을 걷었으니 이 선이 유일한 경계다. 어두운 무드에선 흰 선,
+       밝은 무드에선 잉크 선이라야 보인다(흰 선을 흰 바탕에 그으면 아무것도 없는 것과 같다). */
+    ring: 어두운무드 ? 'rgba(255,255,255,0.18)' : 'rgba(16,16,16,0.16)',
+    shadow: 어두운무드
+      ? '0 24px 48px -20px rgba(0,0,0,0.62)'
+      : '0 20px 44px -22px rgba(0,0,0,0.26)',
     /* 칩(CTA 알약·VS 배지)은 바탕과 반대색이라 눈이 간다. 글자색은 **반드시 그 칩 바탕에서**
        대비를 재서 고른다 — 어두운 무드의 글자색(moodInk)을 그대로 얹었더니 흰 알약에
        흰 글씨가 되어 CTA 문구와 VS가 통째로 사라졌다(2026-08-22 neon 실측). */
@@ -1276,9 +1281,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           style={{
             position: 'absolute', left: M, top: labelTop, right: M,
             fontFamily: look.본문글꼴, fontSize: 25, fontWeight: 700, letterSpacing: '-0.005em',
-            /* 출처 캡션은 정보지 강조가 아니다 — 액센트 색을 쓰지 않고 조용한 흰색으로.
-               강조는 본문 굵기로 준다(2026-07-31 반려). 캡션은 늘 블랙 존 위에 놓인다. */
-            color: 'rgba(255,255,255,0.56)',
+            /* 출처 캡션은 정보지 강조가 아니다 — 액센트 색을 쓰지 않고 조용하게.
+               강조는 본문 굵기로 준다(2026-07-31 반려).
+               ⚠️ 색을 흰색으로 박아뒀었다. "캡션은 늘 블랙 존 위에 놓인다"는 전제였는데,
+               상단 색면을 걷어내면서 그 전제가 깨져 흰 무드에서 캡션이 통째로 사라졌다
+               (2026-08-22). 무드가 정한 보조 글자색을 쓴다. */
+            color: t.label,
           }}
         >
           {card.label}
