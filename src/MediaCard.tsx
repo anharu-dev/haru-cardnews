@@ -515,7 +515,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
 
     /* 상단박스는 글자가 아래 색면 안에서만 살아야 한다 — 그 높이로 넘침을 잰다. */
     const 박스사진H = scrimDoc && 박스 ? (boxPhotoH ?? 700) : 0;
-    const room = (박스 ? 1350 - 박스사진H - pad : 1350 - pad * 2)
+    const room = (박스 ? 1350 - pad * 2 - 박스사진H : 1350 - pad * 2)
       - (card.kicker ? 90 : 0) - (card.body.length ? 120 : 0);
     const track = look.제목자간 === '0' ? 0 : parseFloat(look.제목자간);
     const titleH = titleLines.reduce(
@@ -533,7 +533,16 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     return (
       <AbsoluteFill style={{ backgroundColor: moodBg }}>
         {처리 === '상단박스' ? (
-          <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 박스사진H, overflow: 'hidden' }}>
+          /* 사진을 카드 폭에 꽉 채워 반으로 자르면, 사진과 색면이 아무 관계 없이 위아래로
+             붙어 있는 꼴이 된다("반려" 반려, 2026-08-22). 미리캔버스 레퍼런스는
+             전부 사진을 **라운드 박스에 넣어 색면 위에 얹는다** — 그래야 색면이 배경으로
+             읽히고 사진이 그 위의 요소가 된다. 좌우·위에 여백을 두고 모서리를 굴린다. */
+          <div
+            style={{
+              position: 'absolute', left: pad, right: pad, top: pad,
+              height: 박스사진H, overflow: 'hidden', borderRadius: 28,
+            }}
+          >
             {media()}
           </div>
         ) : clipSrc ? (
@@ -562,7 +571,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         <div
           style={{
             position: 'absolute', left: 0, right: 0,
-            top: 박스 ? 박스사진H : 0, bottom: 0, padding: pad,
+            top: 박스 ? pad + 박스사진H : 0, bottom: 0, padding: pad,
             display: 'flex', flexDirection: 'column',
             justifyContent: 박스 ? 'center' : justify, alignItems, textAlign,
           }}
