@@ -146,7 +146,11 @@ for (let i = 0; i < deck.cards.length; i++) {
   /* clip 없는 일반 카드는 창이 빈 검은 상자로 나가므로 미리 막는다.
      (2026-08-12: 예전엔 여기서 join(undefined)로 원시 스택트레이스를 뱉고 죽었다)
      cta·compare·steps는 원래 미디어가 없는 타이포 전용 카드라 예외다. */
-  const isTypographic = deck.cards[i].cta || deck.cards[i].compare || deck.cards[i].steps;
+  /* 표지(cover)는 무드에 따라 자료 없이도 성립한다 — photo 무드만 사진이 필요하고,
+     minimal·solid는 아예 안 쓰며 frame은 있으면 쓰고 없으면 타이포로 찬다(2026-08-22). */
+  const needsClip = deck.cards[i].cover && deck.brand?.mood === 'photo';
+  const isTypographic = (deck.cards[i].cover && !needsClip)
+    || deck.cards[i].cta || deck.cards[i].compare || deck.cards[i].steps;
   if (!isTypographic && !deck.cards[i].clip) {
     console.error(
       `\n카드 ${i + 1}에 clip이 없습니다.\n` +
@@ -194,7 +198,7 @@ for (let i = 0; i < deck.cards.length; i++) {
      화면 녹화(mp4)는 원래부터 실제 움직임이 있어서 항상 영상으로 나간다.
      "이미지도 무조건 켄번즈 mp4"였던 예전 기본값이 실사용에서 반려됐다(2026-08-13) —
      스톡 사진 카드가 이유 없이 재생 버튼 붙은 동영상으로 나가서 이상해 보였다. */
-  const isStill = !!card.cta || !!card.compare || !!card.steps || (isImage && !card.motion);
+  const isStill = !!card.cover || !!card.cta || !!card.compare || !!card.steps || (isImage && !card.motion);
   const outFile = join('out', deckName, `${n}.${isStill ? 'png' : 'mp4'}`);
   console.log(`카드 ${i + 1}/${deck.cards.length}: ${card.title.replace(/\n/g, ' ')} ${isStill ? '(정지 PNG)' : `(${(durFrames / 30).toFixed(1)}s)`}`);
 
