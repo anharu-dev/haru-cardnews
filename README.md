@@ -1,4 +1,4 @@
-# 카드뉴스 자동화 렌더러
+# haru-cardnews — 카드뉴스 자동화 렌더러
 
 실화면 클립(스크린 녹화·공식 데모·스크린샷) 위에 라벨·제목·본문을 얹어서,
 인스타 캐러셀에 올릴 4:5 카드를 **슬라이드별 개별 mp4/png**로 뽑는 도구입니다.
@@ -50,9 +50,9 @@ Node.js·git 몰라도 됩니다. Claude Code를 켠 상태에서(터미널에 `
 주제를 인터뷰하고 → 기획안을 표로 보여주고 → 승인받고 → 렌더까지 합니다.
 "2번 카드 제목 바꿔줘" 같은 수정도 대화로 됩니다(해당 카드만 다시 렌더).
 
-**소재를 폴더에 직접 넣지 않으셔도 됩니다.** 방금 찍은 화면 녹화는 도구가 다운로드·바탕화면
-폴더에서 알아서 찾아 목록으로 보여줍니다. 없으면 파일을 채팅창에 끌어다 놓거나 경로만
-붙여넣으시면 나머지는 도구가 합니다.
+**소재를 폴더에 직접 넣지 않으셔도 됩니다.** 방금 찍은 화면 녹화를 찾아볼지 도구가 먼저
+묻고, 허락하시면 다운로드·바탕화면 폴더의 최근 파일을 목록으로 보여줍니다(파일 이름만 봅니다).
+싫으시면 파일을 채팅창에 끌어다 놓거나 경로만 붙여넣으시면 나머지는 도구가 합니다.
 
 ## 무료 스톡 사진 (Unsplash, 선택 — 안 하셔도 됩니다)
 
@@ -65,30 +65,28 @@ Node.js·git 몰라도 됩니다. Claude Code를 켠 상태에서(터미널에 `
 1. **Register as a developer** 클릭 → 이메일로 가입(**카드 등록 없음, 시간당 1,000장 조회까지
    무료**)
 2. **New Application** → 약관 동의 → 이름·설명 아무거나 한 줄씩 → **Create application**
-3. 그 페이지에 뜨는 긴 문자열(Access Key)을 채팅에 붙여넣으시면 도구가 알아서 저장합니다.
-
-직접 넣고 싶으시면 `~/.claude/haru-cardnews.env`(Windows는
-`C:\Users\<사용자>\.claude\haru-cardnews.env`)에 `UNSPLASH_ACCESS_KEY=받은키` 한 줄을
-넣으시면 됩니다.
+3. 그 페이지에 뜨는 긴 문자열(Access Key)을 **직접** `~/.claude/haru-cardnews.env` 파일에
+   `UNSPLASH_ACCESS_KEY=받은키` 한 줄로 저장합니다(Windows는
+   `C:\Users\<사용자>\.claude\haru-cardnews.env`, 파일이 없으면 새로 만드세요).
+   **채팅에는 붙여넣지 마세요** — 붙여넣은 값은 대화 기록에 평문으로 남습니다.
+   저장했다고 말씀하시면 도구는 파일이 있는지만 확인하고 이어갑니다.
 
 > 키를 **플러그인 폴더 안에 두지 않는 이유**: 플러그인을 다시 설치하면 그 폴더는 통째로
 > 덮어써져서 키가 사라집니다. `~/.claude/` 아래에 두면 재설치해도 남습니다.
 
-사진을 쓰면 `card.label`에 Unsplash와 작가명이 자동으로 표기됩니다.
+사진을 쓰면 작가 표기는 카드 위가 아니라 **게시물 캡션 맨 끝에 한 줄**로 모아 적습니다
+(완성된 사진 위에 출처 딱지를 박으면 카드가 지저분해집니다).
 
 **직접 JSON 써서 만들기** — Claude Code 없이도 됩니다. 아래 "내 카드뉴스 만들기" 절 참고.
-
-## 렌더러만 먼저 확인
-
-```bash
-npm install
-```
 
 ## 써보기 (샘플로 먼저)
 
 ```bash
 npm run render
 ```
+
+처음 실행이면 필요한 부품(npm 패키지 + 헤드리스 브라우저, 약 200MB)을 인터넷에서 알아서
+받습니다 — `npm install`을 따로 치지 않으셔도 됩니다.
 
 **주의: 이 명령어는 `sample` 덱 하나만 렌더하는 테스트용 고정 명령입니다.**
 주제·자료를 물어보지 않습니다 — 그런 기능이 없고, 항상 `sample.json`만 렌더하도록
@@ -111,8 +109,7 @@ npm run render
   "brand": { "mood": "press" },
   "cards": [
     { "cover": true, "kicker": "처음 하는 사람을 위한", "clip": "clips/내주제/표지.jpg",
-      "title": "제목 첫 줄
-*강조* 둘째 줄", "body": ["한 줄 부제."] },
+      "title": "제목 첫 줄\n*강조* 둘째 줄", "body": ["한 줄 부제."] },
     {
       "clip": "clips/내주제/영상.mp4",
       "label": "출처 · 한 줄",
@@ -184,7 +181,8 @@ node scripts/mediacards.mjs 내덱 --only 3,5
 { "title": "AI 영상 한 편 뽑는 값\n*4,800원*부터." }
 ```
 
-→ 제목에서 "4,800원"만 액센트 색(테마에 따라 코발트·코랄·레드 등)으로 두껍게 찍힙니다.
+→ 제목에서 "4,800원"만 무드의 강조색(흰+빨강이면 빨강, 검정+초록이면 형광 그린)으로 찍힙니다.
+`note`(노트+형광펜) 무드에서는 색 대신 노란 형광펜이 글자 뒤에 깔립니다.
 본문(`body`)에서 쓰면 색 대신 굵기로만 강조됩니다.
 
 ## 규칙 (이건 코드가 아니라 지켜야 하는 것)
@@ -195,13 +193,22 @@ node scripts/mediacards.mjs 내덱 --only 3,5
 
 ## 폰트
 
-[Pretendard](https://github.com/orioncactus/pretendard) — SIL OFL 1.1 라이선스, 상업적 사용·재배포 무료.
-라이선스 전문은 `public/fonts/OFL.txt`에 함께 담겨 있습니다.
+네 글꼴을 파일로 동봉합니다 — 사용자 컴퓨터에 설치돼 있지 않아도 그대로 렌더됩니다.
+전부 SIL OFL 1.1이라 상업적 사용·재배포가 무료이고, 라이선스 전문은 `public/fonts/`에 함께 있습니다.
+
+| 글꼴 | 쓰는 곳 | 라이선스 파일 |
+|---|---|---|
+| [Pretendard](https://github.com/orioncactus/pretendard) | 기본 본문·제목 | `OFL.txt` |
+| [Gothic A1](https://fonts.google.com/specimen/Gothic+A1) | 미니멀 룩 제목 | `OFL-GothicA1.txt` |
+| [Gowun Batang](https://github.com/yangheeryu/Gowun-Batang) | 매거진 룩 제목 | `OFL-GowunBatang.txt` |
+| [Gowun Dodum](https://github.com/yangheeryu/Gowun-Dodum) | 매거진 룩 본문 | `OFL-GowunDodum.txt` |
+
+Gothic A1·Gowun 계열은 한글 완성형 범위로 서브셋한 woff2입니다(원본 28MB → 1MB).
 
 ## 라이선스
 
 이 도구는 MIT입니다 — 가져다 쓰시고, 고치시고, 본인 것에 넣으셔도 됩니다(`LICENSE` 참고).
-동봉된 Pretendard 글꼴만 별도로 SIL OFL 1.1을 따릅니다.
+동봉된 글꼴 4종만 별도로 SIL OFL 1.1을 따릅니다(위 '폰트' 절).
 
 ## 여기 없는 것
 
