@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join, resolve, sep } from 'node:path';
+import { join, resolve, sep, relative } from 'node:path';
 
 const deckName = process.argv[2];
 if (!deckName) { console.error('사용법: node scripts/mediacards.mjs <덱이름> [--only 1,5]'); process.exit(1); }
@@ -76,6 +76,10 @@ else {
     if (!c || typeof c !== 'object') { bad.push(`카드 ${i + 1}이 { } 형태가 아닙니다.`); return; }
     if (typeof c.title !== 'string' || !c.title.trim()) bad.push(`카드 ${i + 1}에 "title"이 없습니다.`);
     if (c.body !== undefined && !Array.isArray(c.body)) bad.push(`카드 ${i + 1}의 "body"는 [ ] 목록이어야 합니다(한 문장 = 한 줄).`);
+    /* 타입이 어긋나면 렌더 도중 원시 스택트레이스로 죽는다 — 이 스크립트가 지키려는 건
+       "비개발자에게 스택트레이스를 안 보여준다"이므로 여기서 짚는다. */
+    if (c.clip !== undefined && typeof c.clip !== 'string') bad.push(`카드 ${i + 1}의 "clip"은 파일 경로 문자열이어야 합니다.`);
+    if (c.duration !== undefined && !Number.isFinite(c.duration)) bad.push(`카드 ${i + 1}의 "duration"은 숫자(초)여야 합니다.`);
   });
 }
 if (bad.length) {
@@ -109,9 +113,13 @@ mkdirSync(join('out', deckName), { recursive: true });
 /* 플러그인은 git clone으로 깔리는데 node_modules는 .gitignore라 안 따라온다 —
    README가 "다 받아진다"고 적어둔 것과 달리 남의 컴퓨터에선 부품이 없다(2026-08-13).
    비개발자에게 "npm install 하세요"는 그 자체로 장벽이라 여기서 한 번만 알아서 받는다. */
-if (!existsSync('node_modules')) {
-  console.log('\n처음 실행이라 필요한 부품을 받는 중입니다 — 몇 분 걸립니다(이번 한 번만).\n');
-  const r = spawnSync('npm install', { shell: true, stdio: 'inherit' });
+/* @remotion/cli 로 좁혀서 판정한다 — 폴더 존재만 보면, 설치가 중간에 끊겨 껍데기만
+   남았을 때 재설치를 건너뛰고 npx가 레지스트리에서 핀 밖 최신 버전을 끌어온다. */
+if (!existsSync(join('node_modules', '@remotion', 'cli'))) {
+  console.log('\n처음 실행이라 필요한 부품을 인터넷에서 받습니다 — 몇 분 걸립니다(이번 한 번만).\n  · npm 패키지와 헤드리스 브라우저(약 200MB)를 내려받습니다.\n');
+  /* npm install이 아니라 npm ci — package-lock.json 을 그대로 재현한다.
+     install은 lock을 갱신할 수 있어 핀 고정이 깨진다. node_modules가 없는 상황이라 ci가 맞다. */
+  const r = spawnSync('npm ci', { shell: true, stdio: 'inherit' });
   if (r.status !== 0) {
     console.error('\n부품을 받지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.\n');
     process.exit(1);
@@ -158,7 +166,7 @@ const 경로거부 = (cardNo, p, 이유) => {
 const safeClipPath = (p, cardNo) => {
   /* 널바이트가 들어오면 fs 함수가 원시 에러를 던진다 — 비개발자가 볼 화면이 아니다.
      경로 판정을 우회하려는 시도이기도 하니 여기서 먼저 끊는다. */
-  if (typeof p !== 'string' || p.includes(' ')) 경로거부(cardNo, JSON.stringify(p), '경로에 쓸 수 없는 문자가 있습니다.');
+  if (typeof p !== 'string' || p.includes('\0')) 경로거부(cardNo, JSON.stringify(p), '경로에 쓸 수 없는 문자가 있습니다.');
   const full = resolve(PUBLIC_DIR, p);
   if (!안쪽(full)) 경로거부(cardNo, p, 'public 폴더를 벗어납니다.');
   return full;
@@ -219,7 +227,18 @@ for (let i = 0; i < deck.cards.length; i++) {
   }
 
   const info = deck.cards[i].clip ? await probeClip(deck.cards[i].clip, i + 1) : null;
-  const card = { ...deck.cards[i], ...(info ? { clipW: info.width, clipH: info.height } : {}) };
+  /* **검증한 경로를 그대로 렌더러에 넘긴다.** 예전엔 safeClipPath()가 만든 안전한 경로를
+     getVideoMetadata에만 쓰고 버린 뒤, props에는 덱의 원본 문자열을 실어 보냈다. Remotion
+     쪽 방어가 겹쳐 있어 뚫리지는 않았지만, 검증한 값과 쓰는 값이 다른 구조는 회귀 사고의
+     씨앗이다. public 기준 상대경로로 정규화해서 넘긴다. */
+  const safeClip = deck.cards[i].clip
+    ? relative(PUBLIC_DIR, safeClipPath(deck.cards[i].clip, i + 1)).split(sep).join('/')
+    : undefined;
+  const card = {
+    ...deck.cards[i],
+    ...(safeClip ? { clip: safeClip } : {}),
+    ...(info ? { clipW: info.width, clipH: info.height } : {}),
+  };
   const isImage = card.clip ? /\.(png|jpe?g|webp)$/i.test(card.clip) : false;
   /* 이미지·CTA·비교·단계는 기본 10초, 클립은 실측 길이. card.duration(초)으로 덮어쓰기 가능.
      **영상은 10초 미만이면 렌더를 멈춘다 (2026-08-01 반려: "뭘 보려면 최소 10초는 돼야지").**
@@ -260,8 +279,17 @@ for (let i = 0; i < deck.cards.length; i++) {
   const outFile = join('out', deckName, `${n}.${isStill ? 'png' : 'mp4'}`);
   console.log(`카드 ${i + 1}/${deck.cards.length}: ${card.title.replace(/\n/g, ' ')} ${isStill ? '(정지 PNG)' : `(${(durFrames / 30).toFixed(1)}s)`}`);
 
-  const cmd = isStill
-    ? `npx remotion still src/index.ts MediaCard "${outFile}" --frame=0 --props="${propsPath}"`
+  /* 셸을 안 쓴다 — 인자 배열로 직접 넘긴다(2026-08-22 검토 지적).
+     예전엔 `npx remotion ...` 문자열을 만들어 spawnSync(cmd, {shell:true})로 돌렸다.
+     지금은 덱 이름 정규식이 셸 메타문자를 전부 거부해서 주입이 막혀 있지만, 그 안전이
+     **정규식 하나가 완벽하다는 것에만** 걸려 있었다 — "덱 이름에 공백 좀 쓰게 해달라"는
+     요청 한 번에 무너지는 구조다. 셸을 안 거치면 그 표면 자체가 없어진다.
+     npx도 안 쓴다: node_modules가 부분 손상되면 npx가 레지스트리에서 핀(4.0.484) 밖
+     최신 버전을 끌어온다. 로컬 진입점을 node로 직접 부르면 그럴 일이 없다.
+     (Windows에서 npx는 .cmd라 shell:false로는 못 부른다 — 그래서 CLI의 .js를 직접 쓴다.) */
+  const REMOTION_CLI = join('node_modules', '@remotion', 'cli', 'remotion-cli.js');
+  const args = isStill
+    ? [REMOTION_CLI, 'still', 'src/index.ts', 'MediaCard', outFile, '--frame=0', `--props=${propsPath}`]
     // 화질: 프레임 캡처는 기본 JPEG 80이라 화면 녹화·UI 글자가 뭉개진다(전체가 "흐리멍텅"해지는 진짜 원인).
     // 무손실 PNG 캡처 + crf 14 로 뽑는다 — 렌더가 조금 느려지는 대신 대비가 살아난다.
     /* --muted: 오디오 트랙 자체를 넣지 않는다. 무음 트랙이라도 남으면 인스타가 '오리지널 오디오'로
@@ -273,9 +301,10 @@ for (let i = 0; i < deck.cards.length; i++) {
        산출물은 바이트 단위로 동일했다. 숫자를 박지 않는 이유는 남의 컴퓨터가 2코어일 수도
        있어서다: 고정값은 느린 기계에서 오히려 서로 잡아먹는다.
        timeout은 넉넉히 남겨둔다 — 느린 기계에서 OffthreadVideo가 프레임을 못 뽑는 경우 대비. */
-    : `npx remotion render src/index.ts MediaCard "${outFile}" --props="${propsPath}" --timeout=90000 --image-format=png --crf=14 --muted`;
+    : [REMOTION_CLI, 'render', 'src/index.ts', 'MediaCard', outFile, `--props=${propsPath}`,
+       '--timeout=90000', '--image-format=png', '--crf=14', '--muted'];
 
-  const r = spawnSync(cmd, { encoding: 'utf8', shell: true, stdio: 'inherit' });
+  const r = spawnSync(process.execPath, args, { encoding: 'utf8', stdio: 'inherit' });
   rmSync(tmp, { recursive: true, force: true });
   if (r.status !== 0) { console.error(`렌더 실패: 카드 ${i + 1}`); process.exit(1); }
 
