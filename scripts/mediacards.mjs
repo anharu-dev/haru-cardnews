@@ -46,6 +46,16 @@ if (!deck || typeof deck !== 'object') bad.push('덱 파일이 { } 로 시작하
 else {
   if (!Array.isArray(deck.cards) || deck.cards.length === 0) bad.push('"cards" 목록이 없거나 비어 있습니다.');
   if (!deck.brand || typeof deck.brand !== 'object') bad.push('"brand" 항목이 없습니다(handle·theme 등이 들어가는 자리).');
+  /* 모르는 무드 이름은 조용히 흑백으로 떨어진다(MediaCard의 fallback) — 그러면 사용자는
+     오타를 친 줄 모르고 "왜 색이 안 나오지"에서 막힌다. 여기서 이름을 짚어준다.
+     MOOD_NAMES(MediaCard.tsx)와 같은 목록이다 — 무드를 추가하면 양쪽을 같이 고친다. */
+  const MOODS = ['mono-light', 'claude', 'gpt', 'neon', 'gemini'];
+  const th = deck.brand?.theme;
+  if (th !== undefined && !MOODS.includes(th)) {
+    bad.push(`"theme": "${th}" 는 없는 무드입니다. 쓸 수 있는 값: ${MOODS.join(', ')}
+` +
+      `    (어두운 카드를 원하면 theme이 아니라 "surface": "dark" 또는 "bg": "#0d0d0d" 를 씁니다)`);
+  }
   (Array.isArray(deck.cards) ? deck.cards : []).forEach((c, i) => {
     if (!c || typeof c !== 'object') { bad.push(`카드 ${i + 1}이 { } 형태가 아닙니다.`); return; }
     if (typeof c.title !== 'string' || !c.title.trim()) bad.push(`카드 ${i + 1}에 "title"이 없습니다.`);

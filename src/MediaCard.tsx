@@ -271,7 +271,6 @@ const THEMES: Record<string, Theme> = {
   claude: mood({ label: '#e08a6b', accent: '#c2572f', accentDark: '#f08b64' }),
   // OpenAI·GPT 주제 전용 — 안하루 딥코발트
   gpt: mood({ label: '#7aa5f5', accent: '#0047ab', accentDark: '#7aa5f5' }),
-  'mono-dark': MONO_MOOD,
   // 임팩트 속보 — 레드(흰 바탕용으로 채도를 낮춰 잡았다. #ff2e4d는 흰 바탕에서 3.7:1로 흐리다)
   neon: mood({
     label: '#ff5c74',
@@ -283,12 +282,15 @@ const THEMES: Record<string, Theme> = {
   }),
   // Google·Gemini 주제 전용 — 구글 블루(흰 바탕용 진한 톤)
   gemini: mood({ label: '#7ab6f0', accent: '#1263cf', accentDark: '#5b9dfa' }),
-
-  // 구버전 별칭
-  white: MONO_MOOD,
-  ink: MONO_MOOD,
-  dark: MONO_MOOD,
 };
+
+/* 2026-08-22 — 여기 'mono-dark' / 'white' / 'ink' / 'dark' 네 이름이 전부 MONO_MOOD를
+   가리키는 별칭으로 있었다. 이름이 9개인데 결과는 5가지라, 배포하면 사용자는 "dark를
+   골랐는데 왜 안 어둡지"에서 막힌다 — 조용히 흑백 라이트가 나오니 원인도 안 보인다.
+   무드는 **액센트 한 색만** 정하고, 밝기는 surface·bg가 정한다(축이 둘). 별칭을 지워
+   그 경계를 흐리지 않는다. 어둡게 하려면 surface:'dark' 또는 bg를 쓴다.
+   쓰는 덱이 하나도 없는 걸 확인하고 지웠다. */
+export const MOOD_NAMES = Object.keys(THEMES);
 
 /** 본문 줄 중 '명령어/경로'인 줄 — 회색 본문으로 흘리지 않고 코드 칩으로 묶어 보여준다. */
 const isCodeLine = (s: string) =>
