@@ -673,10 +673,20 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     const CTA_PILL_BLOCK = 58 + 52 + 48; // marginTop + 알약 상하패딩 + 텍스트 한 줄
     const ctaTitleH = (f: number) =>
       titleLines.reduce((n, l) => n + lineCount(l, 92 * f, TITLE_TRACK, TEXT_W), 0) * 92 * f * TITLE_LH;
+    /* **한 문장 = 한 줄.** body 배열의 한 원소는 한 줄로 나가야 한다 — 줄바꿈은 글 쓰는
+       사람이 정하는 것이지 폭이 모자라서 아무 데서나 접히면 안 된다.
+       예전엔 폭을 800으로 묶어둬서(카드 텍스트 폭은 968인데) "…순서대로 / 정리했습니다."
+       처럼 어중간하게 접혔다(2026-08-22 반려: "여백, 줄바꿈 싹 엉망").
+       그래서 폭을 카드 폭에 맞추고, 그래도 넘치는 줄이 있으면 **글자를 줄여 한 줄에 앉힌다.**
+       lineCount가 실제보다 적게 세므로 0.88배로 보수적으로 판정한다(§비교 카드 SAFE). */
+    const ctaBodySize = (f: number) => {
+      for (const size of [42, 38, 35, 32, 29].map((v) => v * f)) {
+        if (card.body.every((l) => lineCount(l, size, BODY_TRACK, TEXT_W * 0.88) <= 1)) return size;
+      }
+      return 29 * f;   // 여기까지 와도 안 들어가면 접히게 둔다 — 더 줄이면 못 읽는다
+    };
     const ctaBodyH = (f: number) =>
-      card.body.length
-        ? 46 * f + card.body.reduce((h, line) => h + lineCount(line, 42 * f, BODY_TRACK, 800 * f) * 42 * f * 1.6, 0)
-        : 0;
+      card.body.length ? 46 + card.body.length * ctaBodySize(f) * 1.6 : 0;
     const ctaRoom = 1350 - BOTTOM_SAFE * 2;
     /* 2026-08-22 — 상한이 1이라 '줄이기'만 됐다. "알약이 있어 허전해 보이지 않는다"고 적어뒀지만
        실측하니 콘텐츠가 카드의 36%뿐이고 위아래가 각각 3분의 1씩 비었다 — 비교·단계 카드가
@@ -713,13 +723,15 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             ))}
           </div>
 
+          {/* 간격(marginTop)은 배율에 안 곱한다 — 제목이 1.5배로 커질 때 간격까지 1.5배가
+              되면 글 덩어리가 흩어져 보인다. 커지는 건 글자지 사이가 아니다. */}
           {card.body.length ? (
-            <div style={{ marginTop: 46 * ctaFit, maxWidth: 800 * ctaFit }}>
+            <div style={{ marginTop: 46, maxWidth: TEXT_W }}>
               {card.body.map((line, i) => (
                 <div
                   key={i}
                   style={{
-                    fontFamily: look.본문글꼴, fontSize: 42 * ctaFit, fontWeight: 400, color: t.body,
+                    fontFamily: look.본문글꼴, fontSize: ctaBodySize(ctaFit), fontWeight: 400, color: t.body,
                     lineHeight: 1.6, wordBreak: 'keep-all', overflowWrap: 'anywhere',
                     letterSpacing: `${BODY_TRACK}em`,
                   }}
@@ -732,7 +744,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
 
           <div
             style={{
-              marginTop: 58 * ctaFit, padding: `${26 * ctaFit}px ${46 * ctaFit}px`, borderRadius: 999,
+              marginTop: 58, padding: `${26 * ctaFit}px ${46 * ctaFit}px`, borderRadius: 999,
               background: pillBg, color: pillFg,
               display: 'flex', alignItems: 'center', gap: 16 * ctaFit,
               fontFamily: look.본문글꼴, fontSize: 40 * ctaFit, fontWeight: 800, letterSpacing: '-0.02em',
@@ -1103,6 +1115,22 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   const ratios = (deck ?? []).filter((c) => !c.cta && !c.compare && !c.steps && c.title).map(fitRatio);
   const fit = Math.min(1.15, ...(ratios.length ? ratios : [fitRatio(card)]));
 
+  /* **한 문장 = 한 줄.** body 배열의 한 원소는 한 줄로 나가야 한다 — 줄바꿈은 글 쓰는 사람이
+     정하는 것이지, 폭이 모자라서 아무 데서나 접히면 안 된다("여백, 줄바꿈 싹 엉망" 반려,
+     2026-08-22). 덱 전체 문장을 보고 **다 한 줄에 앉는 최대 크기**를 고른다 —
+     카드마다 따로 정하면 넘길 때 본문 크기가 오르락내리락해서 아마추어로 보인다(§덱 배율).
+     lineCount가 실제보다 적게 세므로 0.88배로 보수 판정한다(§비교 카드 SAFE).
+     31까지 줄여도 안 들어가는 긴 문장은 접히게 둔다 — 더 줄이면 피드에서 못 읽는다. */
+  /* flatMap은 이 프로젝트 TS 타겟(es2018)에 없다 — lib을 올리는 것보다 reduce가 싸다. */
+  const bodyLines = (deck ?? []).reduce<string[]>((a, c) => a.concat(c.body ?? []), []);
+  const deckBodySize = (() => {
+    const lines = bodyLines.length ? bodyLines : card.body;
+    for (const size of [BODY_SIZE, 40, 37, 34, 31]) {
+      if (lines.every((l) => lineCount(l, size * fit, BODY_TRACK, TEXT_W * 0.88) <= 1)) return size * fit;
+    }
+    return 31 * fit;
+  })();
+
   /* 전면 판형 — 자료가 카드를 꽉 채우고 하단 스크림 위에 흰 글자를 얹는다.
      기본 창 판형(상단 블랙 존 + 하단 흰 글 존)은 화면 녹화용이다: 자료를 안 깎는 대신 자료가
      카드의 절반만 쓴다. 사진·생성이미지는 반대로 자료가 주인공이라 꽉 채우는 게 맞다.
@@ -1173,7 +1201,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
                 <div
                   key={i}
                   style={{
-                    fontFamily: look.본문글꼴, fontSize: BODY_SIZE * fit, fontWeight: 400, color: BODY_D,
+                    fontFamily: look.본문글꼴, fontSize: deckBodySize, fontWeight: 400, color: BODY_D,
                     lineHeight: BODY_LH, wordBreak: 'keep-all', overflowWrap: 'anywhere',
                     letterSpacing: `${BODY_TRACK}em`, textShadow: '0 1px 16px rgba(0,0,0,0.45)',
                   }}
@@ -1272,7 +1300,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
               <div
                 key={i}
                 style={{
-                  fontFamily: look.본문글꼴, fontSize: BODY_SIZE * fit, fontWeight: 400, color: t.body,
+                  fontFamily: look.본문글꼴, fontSize: deckBodySize, fontWeight: 400, color: t.body,
                   lineHeight: BODY_LH, wordBreak: 'keep-all', overflowWrap: 'anywhere',
                   letterSpacing: `${BODY_TRACK}em`,
                 }}
