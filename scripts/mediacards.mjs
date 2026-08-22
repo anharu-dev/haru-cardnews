@@ -31,6 +31,7 @@ if (!/^[\w가-힣.-]+$/u.test(deckName) || /^\.+$/.test(deckName)) {
    정본 파일 위치를 옮겨도 컴포넌트를 안 건드린다. */
 const MOOD_DOC = JSON.parse(readFileSync(join('public', 'moods.json'), 'utf8'));
 const MOODS = MOOD_DOC.무드;
+const moodList = () => MOODS.map((m) => `      ${m.id}  (${m.이름} — ${m.쓰임})`).join('\n');
 
 const deckPath = join('public', 'mediadecks', `${deckName}.json`);
 let deck;
@@ -55,10 +56,21 @@ else {
   /* 모르는 무드 이름은 조용히 기본값으로 떨어진다 — 그러면 사용자는 오타를 친 줄 모르고
      "왜 색이 안 나오지"에서 막힌다. 여기서 이름을 짚어준다. 목록은 moods.json 정본에서 읽는다
      (예전엔 스크립트에 이름을 또 적어둬서 무드를 추가할 때마다 두 곳을 고쳐야 했다). */
+  /* theme·surface는 무드 체계로 바뀌면서 없어졌다(2026-08-22). 그냥 무시하면 예전 덱을
+     가진 사람이 "흑백으로 해놨는데 왜 빨강이지"에서 막힌다 — 무엇으로 바뀌었는지 알려준다. */
+  const 옛필드 = { theme: 'mood', surface: 'bg' };
+  for (const [old, now] of Object.entries(옛필드)) {
+    if (deck.brand?.[old] !== undefined) {
+      bad.push(`"${old}" 는 더 이상 쓰지 않습니다 — "${now}" 로 바뀌었습니다.
+` +
+        (now === 'mood' ? `    쓸 수 있는 무드:\n` + moodList() : `    예: "bg": "#0d0d0d"`));
+    }
+  }
+
   const mn = deck.brand?.mood;
   if (mn !== undefined && !MOODS.some((m) => m.id === mn)) {
-    bad.push(`"mood": "${mn}" 는 없는 무드입니다. 쓸 수 있는 값:\n` +
-      MOODS.map((m) => `      ${m.id}  (${m.이름} — ${m.쓰임})`).join('\n'));
+    bad.push(`"mood": "${mn}" 는 없는 무드입니다. 쓸 수 있는 값:
+` + moodList());
   }
   (Array.isArray(deck.cards) ? deck.cards : []).forEach((c, i) => {
     if (!c || typeof c !== 'object') { bad.push(`카드 ${i + 1}이 { } 형태가 아닙니다.`); return; }

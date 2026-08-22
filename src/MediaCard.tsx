@@ -407,6 +407,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   };
   /* brand.bg를 주면 무드 바탕을 덮는다 — 무드는 한 벌이지만 바탕만 바꾸고 싶을 때가 있다.
      그때 글자색은 그 바탕에서 읽히는 쪽으로 다시 고른다(사용자가 대비를 계산하지 않게). */
+  /* ⚠️ 여기 'AI 안하루'가 폴백으로 박혀 있었다(5곳). 남이 이 도구를 쓰면 자기 카드에
+     남의 채널명이 찍히는 사고다 — 인터뷰로만 막고 코드는 그대로였다. 폴백을 없애고,
+     계정 표기는 showHandle을 켠 사람에게만 나간다(2026-08-22). */
+  const mastheadText = brand.showHandle ? (brand.wordmark ?? brand.handle) : undefined;
+
   const moodBg = brand.bg ?? mood.바탕;
   const moodInk = brand.bg ? pickOn(moodBg, INK, '#ffffff') : mood.글자;
   const moodSub = brand.bg
@@ -666,10 +671,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     // 흰 판형이면 블랙 알약, 통짜 블랙 판형이면 흰 알약(chipBg/chipText가 이미 뒤집혀 있다).
     const pillBg = t.chipBg;
     const pillFg = t.chipText;
-    const mark = brand.wordmark ?? brand.handle ?? 'AI 안하루';
-    const pillText = card.keyword
-      ? `${mark} · 댓글에 '${card.keyword}'`
-      : `${mark} · ${card.action ?? '팔로우'}`;
+    const mark = mastheadText;
+    /* 계정명은 showHandle을 켠 사람만 붙는다. 안 켰으면 행동만 남긴다
+       ("댓글에 '기억' →"). 계정명 없이도 CTA는 성립한다. */
+    const 행동 = card.keyword ? `댓글에 '${card.keyword}'` : (card.action ?? '팔로우');
+    const pillText = mark ? `${mark} · ${행동}` : 행동;
 
     /* CTA는 창이 없어 세로 공간을 통째로 제목·본문·알약이 나눠 쓴다 — 일반 카드처럼 축소가
        안 걸려 있어서, 제목을 길게 쓴 마지막 장이 위아래로 그냥 잘려 나갔다(2026-08-13).
@@ -918,7 +924,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
       <AbsoluteFill style={{ backgroundColor: t.page }}>
         <Grain level={brand.texture} />
         <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
-        <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color={t.ink} />
+        <Masthead text={mastheadText} color={t.ink} />
 
         <div style={{ position: 'absolute', left: M, right: M, top: cmpTop }}>
           <div
@@ -1059,7 +1065,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
       <AbsoluteFill style={{ backgroundColor: t.page }}>
         <Grain level={brand.texture} />
         <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
-        <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color={t.ink} />
+        <Masthead text={mastheadText} color={t.ink} />
 
         <div style={{ position: 'absolute', left: M, right: M, top: stepTop }}>
           {card.title ? (
@@ -1189,7 +1195,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           }}
         />
 
-        <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color="#ffffff" />
+        <Masthead text={mastheadText} color="#ffffff" />
         {/* 전면 판형은 항상 사진 위 스크림이라 chipBg/chipText(surface 토글용)를 안 쓰고
             흰 배지로 고정한다 — 어떤 사진이 와도 대비가 보장되는 유일한 조합이다. */}
         <Badge text={card.badge} bg="#ffffff" fg={BLACK} />
@@ -1340,7 +1346,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
       </div>
 
       {/* 라이트 무드는 상단이 블랙 존이라 마스트헤드도 그 위에서 읽히는 색으로 */}
-      <Masthead text={brand.wordmark ?? brand.handle ?? 'AI 안하루'} color={t.topZone ? '#ffffff' : t.ink} />
+      <Masthead text={mastheadText} color={t.topZone ? '#ffffff' : t.ink} />
       <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
     </AbsoluteFill>
   );
