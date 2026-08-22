@@ -73,11 +73,42 @@ export type DeckSummary = {
   compare?: unknown; steps?: unknown; // 있으면 자기 혼자 기준으로 줄이는 카드 — 덱 배율 계산에서 뺀다
 };
 
+/** 무드 한 벌 — public/moods.json에서 렌더 스크립트가 골라 넘긴다.
+ *  컴포넌트가 무드 목록을 직접 들고 있으면 정의가 두 벌이 되어 어긋난다(2026-08-22). */
+export type Mood = {
+  id: string; 이름: string; 쓰임: string;
+  바탕: string; 글자: string; 보조글자: string; 강조: string; 어두운바탕: string | null;
+  강조방식: '색' | '형광펜';
+  형광펜바탕?: string; 형광펜글자?: string;
+  사진위강조: string | null;
+  제목행간: number; 본문행간: number; 제목배율?: number; 본문배율?: number;
+  킥라벨색?: string;
+  룩: string; 사진씀: boolean;
+};
+
+/** 룩 — 타이포와 레이아웃. 색은 포함하지 않는다. */
+export type Look = {
+  이름: string; 쓰임: string;
+  제목글꼴: string; 본문글꼴: string;
+  제목굵기: number; 제목자간: string; 제목행간: number;
+  본문행간: number; 본문자간: string;
+  여백: number; 제목위치: 'top' | 'center' | 'bottom'; 정렬: 'left' | 'center';
+  제목배율: number; 본문배율: number;
+};
+
+export type Scrim = {
+  기본세기: number;
+  정지점: Array<{ 위치: string; 세기배수: number; 상한?: number }>;
+};
+
 export type MediaCardProps = {
   brand: DeckBrand;
   card: MediaCardDef;
   durFrames: number;
   deck?: DeckSummary[];
+  mood?: Mood;
+  look?: Look;
+  scrim?: Scrim;
 };
 
 /* ── 레이아웃 (1080×1350) ─────────────────────────────────────────────
@@ -173,7 +204,7 @@ const BODY_L = '#2b2f33';       // 본문 — 흰 바탕 대비 13:1 (2026-08-01
    이제 **모든 무드가 같은 판형**이다: 상단 = 블랙 존(자료 창 + 출처 캡션), 하단 = 순백 + 진한 잉크.
    무드 정체성은 배경이 아니라 **액센트 한 색**이 낸다 — 그래서 액센트는 전부 흰 바탕에서
    읽히는 채도로 다시 잡았다(옛 다크 전용 액센트는 흰 바탕에서 물에 탄 것처럼 보였다). */
-const mood = (o: {
+const makeTheme = (o: {
   label: string; accent: string; accentDark?: string; inkDark?: string;
   ring?: string; shadow?: string; chipBg?: string; chipText?: string;
 }): Theme => ({
@@ -192,7 +223,7 @@ const mood = (o: {
   chipText: o.chipText ?? '#e9eaec',
 });
 
-const MONO_MOOD = mood({
+const MONO_MOOD = makeTheme({
   label: 'rgba(255,255,255,0.64)', accent: INK,
   // 통짜 블랙에서 흑백 무드는 '흰 하이라이트 vs 조금 죽인 제목'으로 대비를 낸다
   accentDark: '#ffffff', inkDark: '#d5d8db',
@@ -272,11 +303,11 @@ const toDark = (t: Theme): Theme => ({
 const THEMES: Record<string, Theme> = {
   'mono-light': MONO_MOOD,
   // Anthropic·Claude 주제 전용 — 코랄
-  claude: mood({ label: '#e08a6b', accent: '#c2572f', accentDark: '#f08b64' }),
+  claude: makeTheme({ label: '#e08a6b', accent: '#c2572f', accentDark: '#f08b64' }),
   // OpenAI·GPT 주제 전용 — 안하루 딥코발트
-  gpt: mood({ label: '#7aa5f5', accent: '#0047ab', accentDark: '#7aa5f5' }),
+  gpt: makeTheme({ label: '#7aa5f5', accent: '#0047ab', accentDark: '#7aa5f5' }),
   // 임팩트 속보 — 레드(흰 바탕용으로 채도를 낮춰 잡았다. #ff2e4d는 흰 바탕에서 3.7:1로 흐리다)
-  neon: mood({
+  neon: makeTheme({
     label: '#ff5c74',
     accent: '#d40f2c',
     accentDark: '#ff2e4d',      // 검정에선 원래의 네온 레드가 산다
@@ -285,7 +316,7 @@ const THEMES: Record<string, Theme> = {
     shadow: '0 24px 48px -20px rgba(0,0,0,0.75)',
   }),
   // Google·Gemini 주제 전용 — 구글 블루(흰 바탕용 진한 톤)
-  gemini: mood({ label: '#7ab6f0', accent: '#1263cf', accentDark: '#5b9dfa' }),
+  gemini: makeTheme({ label: '#7ab6f0', accent: '#1263cf', accentDark: '#5b9dfa' }),
 };
 
 /* 2026-08-22 — 여기 'mono-dark' / 'white' / 'ink' / 'dark' 네 이름이 전부 MONO_MOOD를
@@ -358,7 +389,39 @@ const fitRatio = (c: { title: string; body?: string[]; label?: string }) => {
   return (1350 - BOTTOM_SAFE - textTop) / Math.max(1, needed);
 };
 
-export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, deck }) => {
+export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, deck, mood: moodProp, look: lookProp, scrim: scrimProp }) => {
+  /* 무드·룩은 렌더 스크립트가 정본(public/moods.json)에서 골라 넘긴다. Remotion Studio에서
+     직접 열었을 때만 없을 수 있어서, 그때는 기본 무드(흰+빨강)로 떨어뜨린다. */
+  const mood: Mood = moodProp ?? {
+    id: 'press', 이름: '흰 + 빨강', 쓰임: '',
+    바탕: '#ffffff', 글자: '#111111', 보조글자: '#5c5c5c', 강조: '#d92121', 어두운바탕: '#111111',
+    강조방식: '색', 사진위강조: '#ffffff', 제목행간: 1.18, 제목배율: 1.1, 본문행간: 1.7,
+    킥라벨색: '#ff6b6b', 룩: 'magazine', 사진씀: true,
+  };
+  const look: Look = lookProp ?? {
+    이름: '매거진', 쓰임: '', 제목글꼴: 'Gowun Batang', 본문글꼴: 'Gowun Dodum',
+    제목굵기: 700, 제목자간: '-0.01em', 제목행간: 1.25, 본문행간: 1.7, 본문자간: '0',
+    여백: 96, 제목위치: 'top', 정렬: 'left', 제목배율: 0.92, 본문배율: 0.98,
+  };
+  /* brand.bg를 주면 무드 바탕을 덮는다 — 무드는 한 벌이지만 바탕만 바꾸고 싶을 때가 있다.
+     그때 글자색은 그 바탕에서 읽히는 쪽으로 다시 고른다(사용자가 대비를 계산하지 않게). */
+  const moodBg = brand.bg ?? mood.바탕;
+  const moodInk = brand.bg ? pickOn(moodBg, INK, '#ffffff') : mood.글자;
+  const moodSub = brand.bg
+    ? (moodInk === '#ffffff' ? 'rgba(255,255,255,0.74)' : 'rgba(16,16,16,0.62)')
+    : mood.보조글자;
+
+  /* 사진 위 하단 스크림 — 정본의 정지점을 그대로 CSS로 편다. */
+  const scrimDoc: Scrim = scrimProp ?? { 기본세기: 0.78, 정지점: [
+    { 위치: '0%', 세기배수: 0 }, { 위치: '38%', 세기배수: 0 },
+    { 위치: '58%', 세기배수: 0.42 }, { 위치: '80%', 세기배수: 0.95 },
+    { 위치: '100%', 세기배수: 1.08, 상한: 0.92 },
+  ] };
+  const scrimCss = `linear-gradient(to bottom, ${scrimDoc.정지점.map((st) => {
+    const a = Math.max(0, Math.min(st.상한 ?? 1, scrimDoc.기본세기 * st.세기배수));
+    return `rgba(0,0,0,${a}) ${st.위치}`;
+  }).join(', ')})`;
+
   const frame = useCurrentFrame();
   const preset = THEMES[brand.theme ?? 'mono-light'] ?? THEMES['mono-light'];
   /* brand.accent(hex)로 프리셋 액센트를 덮어쓴다 — 자기 브랜드 색을 쓰라고 열어둔 자리다.
@@ -401,275 +464,136 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   const blocks = toBlocks(card.body);
   const titleLines = card.title.split('\n');
 
-  /* ── 표지(cover) — 무드가 레이아웃까지 바꾸는 유일한 자리 ────────────────────
-     2026-08-22 재설계. 그전까지 '무드'는 액센트 한 색만 바꿨다. 5종을 뽑아 나란히
-     놓으니 색만 다른 같은 카드였고, "그럴 거면 색을 물어보는 게 낫다"는 반려를 받았다.
+  /* ── 표지(cover) — 무드 한 벌이 색·글꼴·레이아웃을 함께 정한다 ──────────────────
+     2026-08-22 재작성. 처음엔 여기에 minimal/frame/solid/photo라는 골격 4종을 직접 만들었는데,
+     내부 디자인 시스템에 이미 무드 11종 × 룩 3종이 2026-07-31부터 있었다.
+     그쪽 정의를 public/moods.json 정본으로 들여오고, 이 자리는 그 정본을 그리기만 한다.
 
-     미리캔버스 카드뉴스 템플릿 24종을 실제로 받아서 확인한 사실(2026-08-22):
-     · 흰 바탕에 글자만 놓은 건 **0개**다. 전부 색면·사진·프레임·일러스트로 차 있다
-     · 사진 없이 성립하는 게 대다수 — 색면과 큰 타이포만으로 만든다
-     · 거의 전부 상단에 킥 라벨 한 줄이 있다("초보자를 위한 입문 가이드" 같은)
-     그래서 무드를 **골격 4종**으로 다시 잡았다. 색(accent)은 무드에서 떼어 따로 받는다.
-
-     minimal 아이보리 바탕 + 헤어라인 프레임 + 큰 타이포   (자료 없어도 됨)
-     frame   연한 색면 위에 흰 창, 그 안에 내용            (자료 선택)
-     solid   액센트가 카드를 꽉 채우고 흰 글씨              (자료 필요 없음)
-     photo   사진 전면 + 하단 색면 띠에 제목                (자료 필요) */
+     무드가 색(바탕·글자·강조·사진위강조)과 강조 방식(색 / 형광펜)을 정하고,
+     룩(impact·magazine·minimal)이 글꼴·제목위치·정렬·자간·행간·여백을 정한다.
+     여기서 새 색이나 새 배치를 발명하지 않는다 — 그러면 정의가 두 벌이 되고, 그게
+     오늘 하루를 통째로 날린 원인이다. */
   if (card.cover) {
-    const mood = brand.mood ?? 'minimal';
-    const accent = t.accent;
-    const hasAccent = accent !== t.ink;
-    const kicker = card.kicker;
+    const bandOnPhoto = !!clipSrc;
+    const ink = bandOnPhoto ? '#ffffff' : moodInk;
+    const sub = bandOnPhoto ? 'rgba(255,255,255,0.80)' : moodSub;
+    /* 사진 위에서는 무드가 따로 정해둔 강조색을 쓴다. 원색을 그대로 얹으면 어두운 사진에서
+       묻히거나 촌스러워진다 — 무드마다 그 답이 다르고(흑백은 흰색, 크림은 모래빛),
+       그 판단이 이미 정본에 들어 있다. null이면 강조를 안 칠한다(형광펜 무드). */
+    const emphOnPhoto = mood.사진위강조;
 
-    /* 표지 제목은 본문 카드보다 크다 — 레퍼런스가 전부 그렇다. 넘치면 줄인다(키우진 않는다:
-       표지는 원래 글이 짧아서, 키우면 두세 글자짜리 제목이 카드를 잡아먹는다). */
-    const coverFit = (size: number, w: number, room: number) => {
-      const h = titleLines.reduce((n, l) => n + lineCount(l, size, TITLE_TRACK, w), 0) * size * TITLE_LH;
-      return Math.min(1, room / Math.max(1, h));
-    };
+    /* 제목 강조 — 형광펜 무드는 글자 뒤에 색면을 깐다(사진 위에서도 그대로 읽힌다:
+       색면이 배경을 가리므로). 나머지는 색으로 칠한다. */
+    const coverEmph: CSSProperties =
+      mood.강조방식 === '형광펜'
+        ? {
+            color: mood.형광펜글자, background: mood.형광펜바탕,
+            borderRadius: 6, padding: '0.02em 0.12em',
+            boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone',
+          }
+        : { color: bandOnPhoto ? (emphOnPhoto ?? ink) : mood.강조 };
 
-    const Kicker: React.FC<{ bg: string; fg: string; border?: string }> = ({ bg, fg, border }) =>
-      kicker ? (
+    /* 레이아웃은 룩이 정한다. 제목이 아래에 붙는 룩(impact)이 사진 표지의 기본형이다 —
+       위쪽 사진을 살리고 아래만 스크림으로 덮는 문법이라 둘이 짝을 이룬다. */
+    const pad = look.여백 + 32;   // 표지·본문·마무리가 전부 같은 좌측 기준선을 쓴다
+    /* 사진 위에서는 글자를 **무조건 아래에 붙인다** — 룩이 위·가운데를 지정해도 무시한다.
+       스크림이 하단에만 깔려서 위쪽에 글자를 두면 밝은 사진에 흰 글씨가 묻히고, 인물 사진이면
+       중앙에 뜬 글자가 얼굴을 덮는다(원본 CoverCard.tsx의 규칙, 2026-08-01 반려로 정해졌다).
+       처음 옮길 때 이 한 줄을 빠뜨려서 press·editorial·fashion 표지 글자가 실제로 안 읽혔다. */
+    const justify = bandOnPhoto
+      ? 'flex-end'
+      : look.제목위치 === 'top' ? 'flex-start' : look.제목위치 === 'center' ? 'center' : 'flex-end';
+    const alignItems = look.정렬 === 'center' ? 'center' : 'flex-start';
+    const titleSize = 92 * look.제목배율 * (mood.제목배율 ?? 1);
+    const bodySize = 40 * look.본문배율 * (mood.본문배율 ?? 1);
+
+    /* 넘치면 줄인다. 표지는 글이 짧아 대개 1이고, 긴 제목만 내려온다. */
+    const room = 1350 - pad * 2 - (card.kicker ? 90 : 0) - (card.body.length ? 120 : 0);
+    const titleH = titleLines.reduce(
+      (n, l) => n + lineCount(l, titleSize, look.제목자간 === '0' ? 0 : parseFloat(look.제목자간), 1080 - pad * 2), 0,
+    ) * titleSize * mood.제목행간;
+    const fit = Math.min(1, room / Math.max(1, titleH));
+
+    return (
+      <AbsoluteFill style={{ backgroundColor: mood.바탕 }}>
+        {/* 사진 — 카드를 꽉 채우고, 그 위에 하단 스크림이 깔린다.
+            상단 38%는 완전 투명이다(정본 §사진스크림): 예전엔 위에도 0.28을 깔았다가
+            사진 전체가 뿌옇게 죽어서 걷어냈다. 인물 사진에서 얼굴이 안 살았다. */}
+        {clipSrc ? (
+          <>
+            {isImageClip ? (
+              <Img src={staticFile(clipSrc)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${kb})` }} />
+            ) : (
+              <OffthreadVideo src={staticFile(clipSrc)} muted style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+            )}
+            <div style={{ position: 'absolute', inset: 0, background: scrimCss }} />
+          </>
+        ) : null}
+        {!clipSrc ? <Grain level={brand.texture} /> : null}
+
         <div
           style={{
-            display: 'inline-block', padding: '14px 28px', borderRadius: 999,
-            background: bg, color: fg, border: border ?? 'none',
-            fontFamily: 'Pretendard', fontSize: 30, fontWeight: 700, letterSpacing: '-0.02em',
+            position: 'absolute', inset: 0, padding: pad,
+            display: 'flex', flexDirection: 'column',
+            justifyContent: justify, alignItems,
+            textAlign: look.정렬 === 'center' ? 'center' : 'left',
           }}
         >
-          {kicker}
-        </div>
-      ) : null;
-
-    /* 색면(solid·photo 띠) 위의 제목 강조. 액센트로 칠하면 바탕이 이미 그 액센트라 사라진다 —
-       흰 글씨 위에서는 반투명 흰 색면으로 띄운다. 이걸 안 쓰고 {l}을 그대로 찍었다가
-       별표가 화면에 그대로 나갔다(2026-08-22). CTA에서 똑같은 사고가 있었다(2026-08-01) —
-       강조는 어느 판형에서든 반드시 emphasize()를 거친다. */
-    const onFillEmph = (on: string): CSSProperties => ({
-      background: on === '#ffffff' ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.10)',
-      borderRadius: 8, padding: '0 0.10em',
-      boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone',
-    });
-
-    const Handle: React.FC<{ color: string }> = ({ color }) => (
-      <div
-        style={{
-          position: 'absolute', left: 0, right: 0, bottom: 64, textAlign: 'center',
-          fontFamily: 'Pretendard', fontSize: 26, fontWeight: 600, color,
-          letterSpacing: '0.08em',
-        }}
-      >
-        {brand.wordmark ?? brand.handle ?? ''}
-      </div>
-    );
-
-    /* ── minimal — 아이보리 바탕 + 안쪽 헤어라인 프레임 ──────────────────
-       "배경이 비면 안 된다"의 가장 조용한 해법: 색면 대신 **프레임**이 공간을 잡는다.
-       종이 위에 인쇄한 것처럼 보이게 아이보리로 살짝 눕힌다(순백은 화면에서 빈 느낌이 난다). */
-    if (mood === 'minimal') {
-      const page = brand.bg ?? '#f7f5f0';
-      const ink = pickOn(page, INK, '#ffffff');
-      const line = `color-mix(in srgb, ${ink} 22%, ${page})`;
-      const fit = coverFit(96, 1080 - 200 - 96, 560);
-      return (
-        <AbsoluteFill style={{ backgroundColor: page }}>
-          <Grain level={brand.texture ?? 'light'} />
-          <div style={{ position: 'absolute', inset: 40, border: `2px solid ${line}`, borderRadius: 8 }} />
-          <div
-            style={{
-              position: 'absolute', left: 100, right: 100, top: 0, bottom: 0,
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              justifyContent: 'center', textAlign: 'center', gap: 44,
-            }}
-          >
-            <Kicker bg="transparent" fg={ink} border={`2px solid ${line}`} />
+          {/* 킥 라벨 — 무드가 색을 따로 정해두면 그 색으로(신문 섹션 머리글이 원래 그 언어다).
+              사진 위에서는 반투명 알약으로 띄운다. */}
+          {card.kicker ? (
             <div
               style={{
-                fontFamily: 'Pretendard', fontSize: 96 * fit, fontWeight: 800, color: ink,
-                letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
-                wordBreak: 'keep-all', overflowWrap: 'anywhere',
+                display: 'inline-block', marginBottom: 26,
+                padding: bandOnPhoto ? '12px 24px' : '0',
+                borderRadius: 999,
+                background: bandOnPhoto ? 'rgba(255,255,255,0.18)' : 'transparent',
+                color: mood.킥라벨색 ?? (bandOnPhoto ? '#ffffff' : mood.강조),
+                fontFamily: look.본문글꼴, fontSize: 30, fontWeight: 700, letterSpacing: '-0.02em',
               }}
             >
-              {titleLines.map((l, i) => <div key={i}>{emphasize(l, titleEmph)}</div>)}
-            </div>
-            {/* 제목 아래 짧은 규칙선 — 레퍼런스가 제목과 발신자 사이를 이렇게 끊는다 */}
-            <div style={{ width: 120, height: 3, background: hasAccent ? accent : line }} />
-            {card.body.length ? (
-              <div
-                style={{
-                  fontFamily: 'Pretendard', fontSize: 34, fontWeight: 400,
-                  color: `color-mix(in srgb, ${ink} 68%, ${page})`,
-                  lineHeight: 1.6, wordBreak: 'keep-all', maxWidth: 720,
-                }}
-              >
-                {card.body.map((l, i) => <div key={i}>{emphasize(l, bodyEmph)}</div>)}
-              </div>
-            ) : null}
-          </div>
-          <Handle color={`color-mix(in srgb, ${ink} 52%, ${page})`} />
-        </AbsoluteFill>
-      );
-    }
-
-    /* ── solid — 액센트가 카드를 통째로 채운다 ────────────────────────────
-       자료가 하나도 없는 사람의 기본값. 색이 없으면(흑백 무드) 잉크로 채운다 —
-       비교·단계 카드가 쓰는 "색이 아니라 채움으로 대비를 낸다"와 같은 원칙. */
-    if (mood === 'solid') {
-      const fill = brand.bg ?? (hasAccent ? accent : INK);
-      const on = pickOn(fill, INK, '#ffffff');
-      const sub = on === '#ffffff' ? 'rgba(255,255,255,0.74)' : 'rgba(16,16,16,0.66)';
-      const fit = coverFit(104, 1080 - M * 2 - 40, 620);
-      return (
-        <AbsoluteFill style={{ backgroundColor: fill }}>
-          <Grain level={brand.texture} />
-          {/* 통짜 색면이 밋밋해지지 않게 큰 원 하나를 아주 옅게 깐다(글자 대비는 건드리지 않는다) */}
-          <div
-            style={{
-              position: 'absolute', right: -220, top: -180, width: 720, height: 720,
-              borderRadius: 999, background: on === '#ffffff' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
-            }}
-          />
-          <div
-            style={{
-              position: 'absolute', left: M + 20, right: M + 20, top: 0, bottom: 0,
-              display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-              justifyContent: 'center', gap: 40,
-            }}
-          >
-            <Kicker bg={on === '#ffffff' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.10)'} fg={on} />
-            <div
-              style={{
-                fontFamily: 'Pretendard', fontSize: 104 * fit, fontWeight: 800, color: on,
-                letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
-                wordBreak: 'keep-all', overflowWrap: 'anywhere',
-              }}
-            >
-              {titleLines.map((l, i) => <div key={i}>{emphasize(l, onFillEmph(on))}</div>)}
-            </div>
-            {card.body.length ? (
-              <div
-                style={{
-                  fontFamily: 'Pretendard', fontSize: 36, fontWeight: 400, color: sub,
-                  lineHeight: 1.62, wordBreak: 'keep-all', maxWidth: 800,
-                }}
-              >
-                {card.body.map((l, i) => <div key={i}>{emphasize(l, { fontWeight: 700, color: on })}</div>)}
-              </div>
-            ) : null}
-          </div>
-          <Handle color={sub} />
-        </AbsoluteFill>
-      );
-    }
-
-    /* ── photo — 사진 전면 + 하단 색면 띠 ────────────────────────────────
-       레퍼런스에서 사진형 표지는 사진 위에 글자를 얹지 않는다. **띠를 깔고 그 위에** 얹는다 —
-       사진이 어떤 색이든 글자 대비가 보장되기 때문이다(우리 full 판형이 그라데이션 스크림으로
-       버티다 어두운 사진에서 무너졌던 것과 같은 문제를, 레퍼런스는 띠로 푼다). */
-    if (mood === 'photo') {
-      const bandH = 552;   // 핸들(하단 중앙)과 본문이 27px까지 붙던 걸 띄운다(2026-08-22 실측)
-      const band = brand.bg ?? (hasAccent ? accent : INK);
-      const on = pickOn(band, INK, '#ffffff');
-      const sub = on === '#ffffff' ? 'rgba(255,255,255,0.76)' : 'rgba(16,16,16,0.66)';
-      const fit = coverFit(84, 1080 - M * 2 - 40, 300);
-      return (
-        <AbsoluteFill style={{ backgroundColor: band }}>
-          {clipSrc ? (
-            <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 1350 - bandH, overflow: 'hidden' }}>
-              {isImageClip ? (
-                <Img src={staticFile(clipSrc)} style={{ width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${kb})` }} />
-              ) : (
-                <OffthreadVideo src={staticFile(clipSrc)} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              )}
+              {card.kicker}
             </div>
           ) : null}
-          <div
-            style={{
-              position: 'absolute', left: 0, right: 0, bottom: 0, height: bandH,
-              background: band, padding: `48px ${M + 20}px 0`,
-              display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 30,
-            }}
-          >
-            <Kicker bg={on === '#ffffff' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.10)'} fg={on} />
-            <div
-              style={{
-                fontFamily: 'Pretendard', fontSize: 84 * fit, fontWeight: 800, color: on,
-                letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
-                wordBreak: 'keep-all', overflowWrap: 'anywhere',
-              }}
-            >
-              {titleLines.map((l, i) => <div key={i}>{emphasize(l, onFillEmph(on))}</div>)}
-            </div>
-            {card.body.length ? (
-              <div style={{ fontFamily: 'Pretendard', fontSize: 32, fontWeight: 400, color: sub, lineHeight: 1.6, wordBreak: 'keep-all' }}>
-                {emphasize(card.body[0], { fontWeight: 700, color: on })}
-              </div>
-            ) : null}
-          </div>
-          <Handle color={sub} />
-        </AbsoluteFill>
-      );
-    }
 
-    /* ── frame — 연한 색면 위에 흰 창 ────────────────────────────────────
-       자료가 있으면 창 안에 넣고, 없으면 창 안이 타이포로 찬다. 자료 유무로 갈리지 않는
-       유일한 무드라 인터뷰에서 기본으로 권하기 좋다. */
-    const wash = brand.bg ?? (hasAccent ? `color-mix(in srgb, ${accent} 14%, #ffffff)` : '#eceae5');
-    const ink = INK;
-    const fit = coverFit(78, 1080 - 96 * 2 - 88, clipSrc ? 260 : 480);
-    return (
-      <AbsoluteFill style={{ backgroundColor: wash }}>
-        <Grain level={brand.texture} />
-        {/* 창 높이를 top/bottom으로 못박아 뒀더니, 자료 없는 표지에서 창의 아래 3분의 2가
-            텅 빈 채로 남았다(2026-08-22 실측, 창 채움 23%). 비교·단계 카드에서 이미 두 번
-            겪은 병이다 — **자료가 있을 때만 창을 크게 잡고, 없으면 내용 높이에 맞춘다.**
-            세로 중앙은 transform으로 유지한다. */}
-        <div
-          style={{
-            position: 'absolute', left: 76, right: 76,
-            ...(clipSrc
-              ? { top: 120, bottom: 150 }
-              : { top: '50%', transform: 'translateY(-50%)' }),
-            background: '#ffffff', borderRadius: 36,
-            boxShadow: '0 30px 60px -24px rgba(0,0,0,0.22)',
-            padding: clipSrc ? 56 : 72, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 34,
-          }}
-        >
-          <Kicker bg={hasAccent ? `color-mix(in srgb, ${accent} 16%, #ffffff)` : '#f0eeea'} fg={hasAccent ? accent : ink} />
           <div
             style={{
-              fontFamily: 'Pretendard', fontSize: 78 * fit, fontWeight: 800, color: ink,
-              letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
+              fontFamily: look.제목글꼴, fontSize: titleSize * fit, fontWeight: look.제목굵기,
+              color: ink, letterSpacing: look.제목자간, lineHeight: mood.제목행간,
               wordBreak: 'keep-all', overflowWrap: 'anywhere',
             }}
           >
-            {titleLines.map((l, i) => <div key={i}>{emphasize(l, titleEmph)}</div>)}
+            {titleLines.map((l, i) => <div key={i}>{emphasize(l, coverEmph)}</div>)}
           </div>
-          {clipSrc ? (
-            <div style={{ width: '100%', flex: 1, minHeight: 0, borderRadius: 20, overflow: 'hidden', background: '#f4f4f4' }}>
-              {isImageClip ? (
-                <Img src={staticFile(clipSrc)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <OffthreadVideo src={staticFile(clipSrc)} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              )}
-            </div>
-          ) : card.body.length ? (
+
+          {card.body.length ? (
             <div
               style={{
-                fontFamily: 'Pretendard', fontSize: 34, fontWeight: 400, color: '#4a4f55',
-                lineHeight: 1.62, wordBreak: 'keep-all', maxWidth: 700,
+                marginTop: 28, maxWidth: 820,
+                fontFamily: look.본문글꼴, fontSize: bodySize, fontWeight: 400, color: sub,
+                lineHeight: mood.본문행간, letterSpacing: look.본문자간,
+                wordBreak: 'keep-all', overflowWrap: 'anywhere',
               }}
             >
-              {card.body.map((l, i) => <div key={i}>{emphasize(l, bodyEmph)}</div>)}
+              {card.body.map((l, i) => <div key={i}>{emphasize(l, { fontWeight: 700, color: ink })}</div>)}
             </div>
           ) : null}
         </div>
-        <Handle color={pickOn(wash, 'rgba(16,16,16,0.58)', 'rgba(255,255,255,0.7)')} />
+
+        {/* 발신자 — 레퍼런스는 대부분 하단에 둔다 */}
+        <div
+          style={{
+            position: 'absolute', left: 0, right: 0, bottom: 44, textAlign: 'center',
+            fontFamily: look.본문글꼴, fontSize: 25, fontWeight: 600,
+            color: bandOnPhoto ? 'rgba(255,255,255,0.72)' : moodSub,
+            letterSpacing: '0.08em',
+          }}
+        >
+          {brand.wordmark ?? brand.handle ?? ''}
+        </div>
       </AbsoluteFill>
     );
   }
-
   /* CTA 전용 마지막 장 — 큐레이터·매거진 판형(2026-07-31 확정).
      좌측정렬 문단 + 우하단 워터마크는 "글이 끊긴 자리"처럼 보여 반려됐다. 대신 축을 하나로 세운다:
      제목 → 본문 → 알약 버튼(계정+행동) → 출처 한 줄, 전부 가운데. 버튼이 시선의 종착점이다. */

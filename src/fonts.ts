@@ -9,6 +9,17 @@ const FACES: Array<[string, string]> = [
   ['fonts/Pretendard-ExtraBold.woff2', '800'],
 ];
 
+/* 룩(magazine·minimal)이 쓰는 글꼴. 구글 폰트를 CDN에서 부르지 않고 파일로 동봉한다 —
+   인터넷 없이도 렌더돼야 하고, 아래 delayRender 주석에 적힌 이유로 로딩을 기다리지도 않는다.
+   한글 완성형 전체로 서브셋해서 세 벌 합쳐 1MB다(원본 TTF는 28MB).
+   룩이 실제로 쓰는 두께만 받았으므로 여기 없는 두께를 요청하면 브라우저가 가짜 굵기를 만든다 —
+   룩의 headingWeight를 바꿀 땐 그 두께 파일도 같이 받아야 한다. */
+const LOOK_FACES: Array<[string, string, string]> = [
+  ['fonts/GothicA1-ExtraBold.woff2', 'Gothic A1', '800'],
+  ['fonts/GowunBatang-Bold.woff2', 'Gowun Batang', '700'],
+  ['fonts/GowunDodum-Regular.woff2', 'Gowun Dodum', '400'],
+];
+
 /* ⚠ 여기에 delayRender를 다시 넣지 말 것 (2026-08-13, 실측으로 세 번 확인).
 
    폰트 로딩을 delayRender 핸들로 감싸면 렌더가 죽는다. 같은 family('Pretendard')로 네 두께를
@@ -33,4 +44,9 @@ for (const [url, weight] of FACES) {
   const face = new FontFace('Pretendard', `url(${staticFile(url)}) format('woff2')`, { weight });
   document.fonts.add(face);
   face.load().catch(() => {});   // 실패해도 무시 — 기본 글꼴로 나가고 렌더는 계속된다
+}
+for (const [url, family, weight] of LOOK_FACES) {
+  const face = new FontFace(family, `url(${staticFile(url)}) format('woff2')`, { weight });
+  document.fonts.add(face);
+  face.load().catch(() => {});
 }
