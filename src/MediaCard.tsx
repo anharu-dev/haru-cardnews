@@ -414,12 +414,23 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
        CTA는 덱에 보통 한 장뿐이라(§3 "마지막 장은 CTA 전용") 덱 전체 배율과 안 묶고
        이 카드 혼자 기준으로 줄인다 — 늘리진 않는다, 알약이 이미 있어 허전해 보이지 않는다. */
     const CTA_PILL_BLOCK = 58 + 52 + 48; // marginTop + 알약 상하패딩 + 텍스트 한 줄
-    const ctaTitleH = titleLines.reduce((n, l) => n + lineCount(l, 92, TITLE_TRACK, TEXT_W), 0) * 92 * TITLE_LH;
-    const ctaBodyH = card.body.length
-      ? 46 + card.body.reduce((h, line) => h + lineCount(line, 42, BODY_TRACK, 800) * 42 * 1.6, 0)
-      : 0;
-    const ctaRoom = 1350 - BOTTOM_SAFE * 2 - CTA_PILL_BLOCK;
-    const ctaFit = Math.min(1, ctaRoom / Math.max(1, ctaTitleH + ctaBodyH));
+    const ctaTitleH = (f: number) =>
+      titleLines.reduce((n, l) => n + lineCount(l, 92 * f, TITLE_TRACK, TEXT_W), 0) * 92 * f * TITLE_LH;
+    const ctaBodyH = (f: number) =>
+      card.body.length
+        ? 46 * f + card.body.reduce((h, line) => h + lineCount(line, 42 * f, BODY_TRACK, 800 * f) * 42 * f * 1.6, 0)
+        : 0;
+    const ctaRoom = 1350 - BOTTOM_SAFE * 2;
+    /* 2026-08-22 — 상한이 1이라 '줄이기'만 됐다. "알약이 있어 허전해 보이지 않는다"고 적어뒀지만
+       실측하니 콘텐츠가 카드의 36%뿐이고 위아래가 각각 3분의 1씩 비었다 — 비교·단계 카드가
+       겪은 것과 같은 병이다. 배율마다 다시 재서(키우면 줄바꿈이 늘어난다) 안 넘치는 최대값을 쓴다. */
+    let ctaFit = 1;
+    for (const f of [1.5, 1.4, 1.3, 1.2, 1.1, 1.0]) {
+      if (ctaTitleH(f) + ctaBodyH(f) + CTA_PILL_BLOCK * f <= ctaRoom) { ctaFit = f; break; }
+    }
+    if (ctaFit === 1 && ctaTitleH(1) + ctaBodyH(1) + CTA_PILL_BLOCK > ctaRoom) {
+      ctaFit = Math.min(1, (ctaRoom - CTA_PILL_BLOCK) / Math.max(1, ctaTitleH(1) + ctaBodyH(1)));
+    }
 
     return (
       <AbsoluteFill style={{ backgroundColor: t.page }}>
@@ -446,7 +457,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           </div>
 
           {card.body.length ? (
-            <div style={{ marginTop: 46 * ctaFit, maxWidth: 800 }}>
+            <div style={{ marginTop: 46 * ctaFit, maxWidth: 800 * ctaFit }}>
               {card.body.map((line, i) => (
                 <div
                   key={i}
@@ -464,10 +475,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
 
           <div
             style={{
-              marginTop: 58, padding: '26px 46px', borderRadius: 999,
+              marginTop: 58 * ctaFit, padding: `${26 * ctaFit}px ${46 * ctaFit}px`, borderRadius: 999,
               background: pillBg, color: pillFg,
-              display: 'flex', alignItems: 'center', gap: 16,
-              fontFamily: 'Pretendard', fontSize: 40, fontWeight: 800, letterSpacing: '-0.02em',
+              display: 'flex', alignItems: 'center', gap: 16 * ctaFit,
+              fontFamily: 'Pretendard', fontSize: 40 * ctaFit, fontWeight: 800, letterSpacing: '-0.02em',
             }}
           >
             <span>{pillText}</span>
@@ -692,41 +703,64 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   if (card.steps && card.steps.length > 0) {
     const zoneTop = 200;
     const zoneBottom = 1350 - BOTTOM_SAFE;
-    const numW = 130;
-    const rowGap = 28;
-    const titleH = titleLines.reduce((n, l) => n + lineCount(l, 60, TITLE_TRACK, TEXT_W), 0) * 60 * TITLE_LH;
-    const titleBlock = card.title ? titleH + 44 : 0;
-    const room = zoneBottom - zoneTop - titleBlock;
 
-    /* 2026-08-21 — 두 가지를 같이 고친다.
-       ① 상한이 1이라 '줄이기'만 되고 '키우기'가 안 돼서, 목록 3~5개면 콘텐츠가 카드의
-          40%만 차지하고 나머지가 빈 채로 남았다("배치와 여백이 엉망" 반려).
-       ② 그렇다고 상한만 올리면 터진다 — 줄 수를 40px 기준으로 세는데 실제로는 40*fit로
-          렌더되니, 키울수록 줄바꿈이 늘어나는 걸 계산이 못 따라가 마지막 항목이 화면 밖으로
-          밀렸다(실측). 그래서 **배율마다 그 크기로 다시 세어** 안 넘치는 최대값을 고른다. */
-    const measure = (f: number) => {
-      const rows = card.steps!.map(
-        (s) => Math.max(1, lineCount(s, 40 * f, BODY_TRACK, 1080 - M * 2 - numW)) * 40 * f * 1.35,
-      );
-      return rows.reduce((a, b) => a + b, 0) + rowGap * f * (card.steps!.length - 1);
-    };
+    /* 2026-08-22 — 흰 바탕에 번호와 글자만 얹은 판형이었다. 비교 카드가 겪은 것과 **같은 병**이다:
+       채울 게 없어서 오른쪽이 통째로 비고, 배율 상한(1.4)에 걸려도 카드의 40%밖에 못 채웠다
+       (3·5단계 실측). 여백 수치가 아니라 구조 문제라, 비교 카드와 같은 처방을 쓴다 —
+       **각 항목을 가로로 꽉 찬 패널 박스로 감싼다.** 번호는 채운 배지로 박아 색이 없어도
+       (기본 흑백 무드) 대비가 남는다. 세로로 남는 공간은 폰트가 아니라 **패널 안쪽 여백**으로
+       흡수한다: 글자만 키우면 좁은 칸에서 줄바꿈이 터진다는 걸 비교 카드에서 이미 겪었다. */
+    const badge = 56;      // 번호 배지 한 변
+    const badgeGap = 26;   // 배지 ↔ 문구
+    const padX = 32;       // 패널 좌우 안쪽 여백
+    const basePadY = 26;   // 패널 위아래 안쪽 여백(최소)
+    const rowGap = 20;
+    const titleGap = 44;
+
+    /* lineCount는 한글을 1em으로 세서 실제 렌더보다 줄 수를 적게 잡는다(§비교 카드 SAFE 주석).
+       패널은 폭이 좁아져 그 오차가 더 아프다 — 폭을 0.88배로 보수적으로 재고 판정한다. */
+    const SAFE = 0.88;
+    const textW = (1080 - M * 2 - padX * 2 - badge - badgeGap) * SAFE;
+
+    const rowTextH = (s: string, f: number) =>
+      Math.max(1, lineCount(s, 40 * f, BODY_TRACK, textW)) * 40 * f * 1.35;
+    const rowH = (s: string, f: number, padY: number) =>
+      padY * 2 + Math.max(badge * f, rowTextH(s, f));
+    const titleH = (f: number) =>
+      card.title
+        ? titleLines.reduce((n, l) => n + lineCount(l, 60 * f, TITLE_TRACK, TEXT_W), 0) * 60 * f * TITLE_LH + titleGap * f
+        : 0;
+    const measure = (f: number, padY: number) =>
+      card.steps!.reduce((a, s) => a + rowH(s, f, padY), 0) + rowGap * f * (card.steps!.length - 1);
+
+    const room = zoneBottom - zoneTop;
+    /* 배율 상한 — 비교 카드는 좁은 두 칸이라 1.4에서 줄바꿈이 터졌지만, 여기는 패널이
+       카드 폭을 통째로 쓴다. 상한을 1.4로 두면 짧은 목록에서 배율이 남는데도 못 커져서
+       남는 공간이 전부 패널 안쪽 여백으로 가고, 박스만 크고 글자는 작은 카드가 됐다
+       (2026-08-22 실측). 배율마다 다시 재니 넘칠 걱정은 measure가 막는다. */
     let stepsFit = 1;
-    for (const f of [1.4, 1.3, 1.2, 1.1, 1.0]) {
-      if ((card.title ? titleH * f + 44 * f : 0) + measure(f) <= zoneBottom - zoneTop) { stepsFit = f; break; }
+    for (const f of [1.8, 1.7, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0]) {
+      if (titleH(f) + measure(f, basePadY * f) <= room) { stepsFit = f; break; }
     }
-    if (stepsFit === 1) stepsFit = Math.min(1, room / Math.max(1, measure(1)));  // 그래도 넘치면 줄인다
-    const needed = measure(stepsFit);
-    const numColor = t.accent === t.ink ? t.ink : t.accent;
+    /* 그래도 넘치면(항목이 많거나 길면) 줄인다 */
+    if (stepsFit === 1 && titleH(1) + measure(1, basePadY) > room) {
+      stepsFit = Math.min(1, (room - titleH(1)) / Math.max(1, measure(1, basePadY)));
+    }
+    /* 남는 세로 공간을 패널 안쪽 여백으로 나눠 먹인다 — 상한을 둬서 항목 하나짜리 덱이
+       카드 절반짜리 통짜 박스가 되는 건 막는다. */
+    const slack = room - titleH(stepsFit) - measure(stepsFit, basePadY * stepsFit);
+    const padY = Math.max(
+      basePadY * stepsFit,
+      Math.min(basePadY * stepsFit + slack / (2 * card.steps.length), 44 * stepsFit),
+    );
 
-    /* 목록이 짧으면(3~4개, 대부분 그렇다) 존 하단까지 늘리지 않는다 — 위쪽에 몰려 있고
-       아래가 텅 비면 미완성처럼 보인다(2026-08-13 실측 반려). 실제 블록 높이만큼만 잡고
-       남는 공간을 위아래로 반씩 나눠, 카드 가운데쯤에 오게 한다. */
-    const blockH = (card.title ? titleH * stepsFit + 44 * stepsFit : 0) + Math.min(room, needed);
-    /* 2026-08-21 — 존([zoneTop, zoneBottom]) 안에서 반씩 나누면 카드 실제 여백이 안 맞는다.
-       zoneTop(200, 마스트헤드 예약)이 BOTTOM_SAFE보다 커서, 존 기준 "균등"이 카드에선 위가
-       100px 넘게 더 비는 것으로 나온다(steps 5개 실측). compare가 이미 같은 이유로 카드
-       양 끝(0,1350) 기준 정렬로 바뀌었는데(§2026-08-15) steps만 옛 방식이 남아 있었다. */
-    const idealStepTop = (1350 - blockH) * 0.45;   // 옵티컬 센터링(compare와 동일)
+    const blockH = titleH(stepsFit) + measure(stepsFit, padY);
+    const numBg = t.accent === t.ink ? t.ink : t.accent;
+    const numInk = pickOn(numBg, INK, '#ffffff');
+
+    /* 옵티컬 센터링 — 위 45 : 아래 55(비교 카드와 동일. 상단엔 마스트헤드가 있어
+       기하 중앙에 두면 아래가 더 비어 보인다). */
+    const idealStepTop = (1350 - blockH) * 0.45;
     const stepTop = Math.max(zoneTop, Math.min(idealStepTop, zoneBottom - blockH));
 
     return (
@@ -740,7 +774,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             <div
               style={{
                 fontFamily: 'Pretendard', fontSize: 60 * stepsFit, fontWeight: 800, color: t.ink,
-                letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH, marginBottom: 44 * stepsFit,
+                letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH, marginBottom: titleGap * stepsFit,
                 wordBreak: 'keep-all', overflowWrap: 'anywhere',
               }}
             >
@@ -754,14 +788,22 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             <div
               key={i}
               style={{
-                display: 'flex', alignItems: 'flex-start',
+                /* 배지는 가운데가 아니라 **첫 줄에** 맞춘다 — 여러 줄로 접히는 항목에서
+                   가운데 정렬하면 번호가 문단 한복판에 떠서 목록으로 안 읽힌다(2026-08-22 실측). */
+                display: 'flex', alignItems: 'flex-start', gap: badgeGap * stepsFit,
                 marginTop: i === 0 ? 0 : rowGap * stepsFit,
+                padding: `${padY}px ${padX * stepsFit}px`,
+                borderRadius: 28,
+                background: `color-mix(in srgb, ${t.ink} 4%, ${t.page})`,
+                border: `2px solid color-mix(in srgb, ${t.ink} 14%, ${t.page})`,
               }}
             >
               <div
                 style={{
-                  width: numW, flexShrink: 0, fontFamily: 'Pretendard',
-                  fontSize: 44 * stepsFit, fontWeight: 800, color: numColor, letterSpacing: '-0.02em',
+                  width: badge * stepsFit, height: badge * stepsFit, flexShrink: 0, borderRadius: 16,
+                  background: numBg, color: numInk,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontFamily: 'Pretendard', fontSize: 28 * stepsFit, fontWeight: 800, letterSpacing: '-0.02em',
                 }}
               >
                 {String(i + 1).padStart(2, '0')}
