@@ -989,10 +989,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     /* lineCount는 한글을 1em으로 세서 실제 렌더보다 줄 수를 적게 잡는다(§비교 카드 SAFE 주석).
        패널은 폭이 좁아져 그 오차가 더 아프다 — 폭을 0.88배로 보수적으로 재고 판정한다. */
     const SAFE = 0.88;
-    const textW = (1080 - M * 2 - padX * 2 - badge - badgeGap) * SAFE;
+    /* 글자가 들어갈 폭은 배율을 따라 같이 줄고 는다(배지·여백도 배율에 곱해지므로).
+       예전엔 배율 1 기준으로만 재서, 키운 배율에서 실제보다 넓게 잡았다. */
+    const textW = (f: number) => (1080 - M * 2 - (padX * 2 + badge + badgeGap) * f) * SAFE;
 
     const rowTextH = (s: string, f: number) =>
-      Math.max(1, lineCount(s, 40 * f, BODY_TRACK, textW)) * 40 * f * 1.35;
+      Math.max(1, lineCount(s, 40 * f, BODY_TRACK, textW(f))) * 40 * f * 1.35;
     const rowH = (s: string, f: number, padY: number) =>
       padY * 2 + Math.max(badge * f, rowTextH(s, f));
     const titleH = (f: number) =>
@@ -1007,20 +1009,36 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
        카드 폭을 통째로 쓴다. 상한을 1.4로 두면 짧은 목록에서 배율이 남는데도 못 커져서
        남는 공간이 전부 패널 안쪽 여백으로 가고, 박스만 크고 글자는 작은 카드가 됐다
        (2026-08-22 실측). 배율마다 다시 재니 넘칠 걱정은 measure가 막는다. */
-    let stepsFit = 1;
-    for (const f of [1.8, 1.7, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0]) {
-      if (titleH(f) + measure(f, basePadY * f) <= room) { stepsFit = f; break; }
+    /* **한 항목 = 한 줄**을 배율보다 먼저 지킨다(2026-08-22). 번호 배지와 패널 여백 때문에
+       글자가 들어갈 폭이 본문(968)보다 240px쯤 좁아서, 높이만 보고 배율을 키우면 항목이
+       "지시가 반복된다 싶으면 그 / 문장을 적어둔다"처럼 접혔다. 목록은 한 항목이 한 줄로
+       읽혀야 목록이다. 그래서 **모든 항목이 한 줄에 앉는 배율 중 가장 큰 것**을 고르고,
+       1.0 아래로도 내려가며 찾는다(본문에서 쓴 것과 같은 처방). */
+    const 맞음 = (f: number) => titleH(f) + measure(f, basePadY * f) <= room;
+    const 한줄 = (f: number) => card.steps!.every((s) => lineCount(s, 40 * f, BODY_TRACK, textW(f)) <= 1);
+
+    let stepsFit = 0;
+    for (const f of [1.8, 1.7, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0, 0.94, 0.88, 0.82, 0.78]) {
+      if (맞음(f) && 한줄(f)) { stepsFit = f; break; }
     }
-    /* 그래도 넘치면(항목이 많거나 길면) 줄인다 */
-    if (stepsFit === 1 && titleH(1) + measure(1, basePadY) > room) {
-      stepsFit = Math.min(1, (room - titleH(1)) / Math.max(1, measure(1, basePadY)));
+    /* 0.78까지 줄여도 한 줄이 안 되는 긴 항목이면 접히게 둔다 — 더 줄이면 피드에서 못 읽는다.
+       그때는 높이만 맞춘다(예전 로직). */
+    if (!stepsFit) {
+      for (const f of [1.4, 1.3, 1.2, 1.1, 1.0]) {
+        if (맞음(f)) { stepsFit = f; break; }
+      }
+      if (!stepsFit) stepsFit = Math.min(1, (room - titleH(1)) / Math.max(1, measure(1, basePadY)));
     }
     /* 남는 세로 공간을 패널 안쪽 여백으로 나눠 먹인다 — 상한을 둬서 항목 하나짜리 덱이
        카드 절반짜리 통짜 박스가 되는 건 막는다. */
     const slack = room - titleH(stepsFit) - measure(stepsFit, basePadY * stepsFit);
+    /* 남는 세로 공간은 패널 안쪽 여백이 먹는다. **상한을 배율에 곱하지 않는다** —
+       항목을 한 줄에 앉히려고 배율을 0.8까지 내리면 상한까지 같이 내려가서, 글자도 작고
+       박스도 작은 텅 빈 카드가 됐다(2026-08-22 실측, 채움 30%). 줄어드는 건 글자지
+       박스가 아니다. 글자를 줄인 만큼 박스가 그 자리를 채워야 카드가 산다. */
     const padY = Math.max(
       basePadY * stepsFit,
-      Math.min(basePadY * stepsFit + slack / (2 * card.steps.length), 44 * stepsFit),
+      Math.min(basePadY * stepsFit + slack / (2 * card.steps.length), 88),
     );
 
     const blockH = titleH(stepsFit) + measure(stepsFit, padY);
