@@ -6,10 +6,10 @@
  *   3) node scripts/mediacards.mjs <덱>
  * → out/<덱>/01.mp4, 02.mp4 … (카드 길이 = 클립 실측 길이, 3~15s 클램프)
  */
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 
 const deckName = process.argv[2];
 if (!deckName) { console.error('사용법: node scripts/mediacards.mjs <덱이름> [--only 1,5]'); process.exit(1); }
@@ -134,8 +134,47 @@ console.log('부품 확인 중 — 헤드리스 브라우저가 없으면 한 �
 await ensureBrowser();
 
 // 자료 실측 픽셀 — 창이 자료 비율을 따라가게(크롭 금지) MediaCard에 주입한다
-const probeClip = async (p) => {
-  const full = join('public', p);
+/* 클립 경로는 **public 안으로 가둔다.**
+   join('public', '../../..') 는 상위 폴더로 그냥 나간다 — 덱 JSON은 남이 만들어 건네줄 수
+   있는 파일이고(이 도구는 공개 배포된다), 그러면 받은 사람 컴퓨터의 아무 파일이나 읽어
+   카드에 그릴 수 있다. 정규화한 절대경로가 public 아래인지 확인하고, 아니면 거기서 끊는다.
+   (2026-08-22 공개 전 보안 점검에서 실제로 탈출되는 걸 확인하고 막았다) */
+const PUBLIC_DIR = resolve('public');
+const 안쪽 = (abs) => abs === PUBLIC_DIR || abs.startsWith(PUBLIC_DIR + sep);
+const 경로거부 = (cardNo, p, 이유) => {
+  console.error(
+    `
+카드 ${cardNo}의 clip 경로를 쓸 수 없습니다: ${p}
+` +
+    `  ${이유}
+` +
+    `  자료는 public/clips/<폴더>/ 아래에 두고, 그 아래 상대경로만 적어주세요.
+` +
+    `  (예: "clips/내주제/영상.mp4")
+`,
+  );
+  process.exit(1);
+};
+const safeClipPath = (p, cardNo) => {
+  /* 널바이트가 들어오면 fs 함수가 원시 에러를 던진다 — 비개발자가 볼 화면이 아니다.
+     경로 판정을 우회하려는 시도이기도 하니 여기서 먼저 끊는다. */
+  if (typeof p !== 'string' || p.includes(' ')) 경로거부(cardNo, JSON.stringify(p), '경로에 쓸 수 없는 문자가 있습니다.');
+  const full = resolve(PUBLIC_DIR, p);
+  if (!안쪽(full)) 경로거부(cardNo, p, 'public 폴더를 벗어납니다.');
+  return full;
+};
+/* 심볼릭 링크로 빠져나가는 걸 막는다. resolve()는 링크를 **따라가지 않아서**,
+   public 안에 바깥을 가리키는 링크가 하나 있으면 위 검사를 그대로 통과한다 —
+   클립 폴더를 통째로 받아 쓰는 경우(이 도구는 공개 배포된다) 실제로 가능한 경로다.
+   파일이 있는 걸 확인한 뒤 실제 경로로 한 번 더 판정한다. */
+const assertRealInside = (full, p, cardNo) => {
+  let real;
+  try { real = realpathSync(full); } catch { return; }   // 못 풀면 아래 존재 검사가 잡는다
+  if (!안쪽(real)) 경로거부(cardNo, p, 'public 밖을 가리키는 링크입니다.');
+};
+
+const probeClip = async (p, cardNo) => {
+  const full = safeClipPath(p, cardNo);
   /* 파일이 없으면 예전엔 길이가 0으로 나와서 "0.0초입니다 — 최소 10초" 라고 엉뚱하게 알렸다.
      경로 오타인데 멀쩡한 영상을 계속 다시 자르게 만드는 오진이라 여기서 끊는다. */
   if (!existsSync(full)) {
@@ -145,6 +184,7 @@ const probeClip = async (p) => {
     );
     process.exit(1);
   }
+  assertRealInside(full, p, cardNo);
   try {
     return await getVideoMetadata(full);
   } catch (e) {
@@ -178,7 +218,7 @@ for (let i = 0; i < deck.cards.length; i++) {
     process.exit(1);
   }
 
-  const info = deck.cards[i].clip ? await probeClip(deck.cards[i].clip) : null;
+  const info = deck.cards[i].clip ? await probeClip(deck.cards[i].clip, i + 1) : null;
   const card = { ...deck.cards[i], ...(info ? { clipW: info.width, clipH: info.height } : {}) };
   const isImage = card.clip ? /\.(png|jpe?g|webp)$/i.test(card.clip) : false;
   /* 이미지·CTA·비교·단계는 기본 10초, 클립은 실측 길이. card.duration(초)으로 덮어쓰기 가능.
