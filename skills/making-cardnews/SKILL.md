@@ -68,13 +68,14 @@ find "$USERPROFILE/Downloads" "$USERPROFILE/Desktop" "$USERPROFILE/Videos" "$USE
   -maxdepth 1 -mtime -7 \( -iname '*.mp4' -o -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' \) 2>/dev/null
 ```
 
-**없어요** → **사진 없이 간다.** 표지는 무드 색면 위 타이포(`cover`에 `clip` 없이), 정보 카드는 텍스트 카드.
-사진을 억지로 구해 넣지 않는다 — 무료 사진 창고(Openverse)는 흔한 주제에서도 엉뚱한 사진이 나온다
-(실측: 5개 주제 중 쓸 만한 게 1개. "slow running"에 갠지스강이 나왔다). 엉뚱한 사진이 든 카드가
-사진 없는 카드보다 훨씬 나쁘다.
+**없어요** → 아래 검색을 돌린다. 3장이 나오면 제안하고, 안 나오면 **사진 없이 간다**
+(표지는 무드 색면 위 타이포 — `cover`에 `clip` 없이, 정보 카드는 텍스트 카드).
+엉뚱한 사진이 든 카드가 사진 없는 카드보다 훨씬 나쁘다 — 이 기준은 그대로다.
 
-단, **스톡 품질 소스로 제한한 검색**이 3장 이상 주면 그때만 제안한다(`&source=stocksnap,rawpixel,wordpress`).
-3장 미만이면 조용히 사진 없이 간다 — 사용자에게 "사진 못 찾았다"고 말할 필요도 없다.
+**검색어는 영어 한두 단어로 넓게 잡는다.** 이게 결과를 가르는 가장 큰 변수다(실측 2026-08-23):
+`cafe menu board` 2건인데 `coffee cafe interior` 26건, `yoga class` 2건인데 `yoga` 수십 건.
+주제를 그대로 번역하지 말고 **찍힐 장면**으로 바꾼다 — "메뉴판 순서를 바꿨다" → `coffee cafe interior`.
+3장 미만이면 한 번 더 넓혀보고, 그래도 안 되면 조용히 사진 없이 간다 — 사용자에게 "사진 못 찾았다"고 말할 필요도 없다.
 사진이 있을 때는 **사용자 화면에 실제로 띄운 뒤** 이 위젯의 소재 칸으로 고르게 한다(기타 = 사진 없이).
 
 사진을 띄우는 법 — **Read 도구는 사용자에게 안 보인다.** 어시스턴트만 보고 사용자 화면엔 "읽기 파일 3개"로
@@ -94,17 +95,33 @@ find "$USERPROFILE/Downloads" "$USERPROFILE/Desktop" "$USERPROFILE/Videos" "$USE
 본인 사진·화면 녹화를 여러 장 골랐을 때는 **"카드마다 다르게"를 추천으로 뒤집는다** —
 자기 자료는 톤이 일정해서 깔수록 좋아진다. 무료 사진일 때만 표지 한 장이 기본이다.
 
-정보 카드 중 절차·대비 주제면 그중 한 장을 `steps`·`compare`로 바꾼다.
+정보 카드가 **실제로** 절차·대비 주제일 때만 그중 한 장을 `steps`·`compare`로 바꾼다(선택).
 
 ```bash
 cd "<렌더러폴더>" && node -e '
 const q = process.argv[1]; const dir = "public/clips/" + process.argv[2];
 require("fs").mkdirSync(dir, { recursive: true });
 (async () => {
-  const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&license=cc0,by&source=stocksnap,rawpixel,wordpress&aspect_ratio=tall&size=large&page_size=3`);
-  const { results, result_count } = await r.json();
-  if (result_count < 3) { console.log("NONE"); process.exit(0); }   // 3장 미만이면 사진 없이 간다
-  for (const [i, p] of results.entries()) {
+  /* 서버 필터로 거르지 않는다 — `size=large`·`aspect_ratio=tall`이 결과를 굶겼다.
+     실측(2026-08-23): "cafe menu board" 1건, "korean street food" 1건, "online course" 1건.
+     그래서 스킬이 늘 "사진 없이 간다"로 빠졌고, 어쩌다 나온 한 장은 주제와 무관했다.
+     같은 검색어에서 두 필터만 빼면 17~94건이 나온다. 대신 **해상도는 우리가 직접 거른다**
+     (카드가 1080x1350이라 그 아래는 뿌옇다). flickr는 넣지 않는다 — 1024px 아마추어 스냅이
+     결과를 덮는다("My hideous running shoes"). 세로형을 앞으로 정렬해 표지에 맞춘다. */
+  const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&license=cc0,by&source=stocksnap,rawpixel,nappy,wordpress&page_size=20`);
+  const { results = [] } = await r.json();
+  const picks = results
+    .filter((x) => x.width >= 1080 && x.height >= 1080)
+    /* 세로형 먼저, 그다음 해상도 순. 무료 CC 사진은 같은 검색어 안에서도 편차가 크다 —
+       "스톡 같은 사진"과 "폰으로 찍은 스냅"이 섞여 온다. 해상도가 높을수록 제대로 된 카메라로
+       찍힌 쪽일 확률이 높아서, 좋은 걸 1번에 올려두고 **최종 판단은 사용자가 보고 고르게 한다.** */
+    .sort((a, b) => {
+      const 세로 = (x) => (x.height >= x.width ? 1 : 0);
+      return (세로(b) - 세로(a)) || (b.width * b.height - a.width * a.height);
+    })
+    .slice(0, 3);
+  if (picks.length < 3) { console.log("NONE"); process.exit(0); }   // 3장 미만이면 사진 없이 간다
+  for (const [i, p] of picks.entries()) {
     const img = await fetch(p.url, { headers: { "User-Agent": "haru-cardnews/1.0" } });
     require("fs").writeFileSync(`${dir}/photo-${i + 1}.jpg`, Buffer.from(await img.arrayBuffer()));
     console.log(`photo-${i + 1}.jpg | ${p.attribution}`);
@@ -122,9 +139,19 @@ Unsplash 키가 있는 환경에서는 같은 자리에서 Unsplash 검색(`Auth
 cd "<렌더러폴더>" && node -e 'import("@remotion/renderer").then(m=>m.getVideoMetadata(process.argv[1])).then(i=>console.log(i.durationInSeconds+"초"))' "public/clips/<주제slug>/<파일>"
 ```
 
+**제목 한 줄은 8자 안팎, 10자를 넘기지 않는다.** 넘기면 렌더러가 한 줄을 유지하려고 글자를
+줄이거나, 못 줄이면 "합니다"처럼 마지막 어절이 혼자 떨어진다(2026-08-23 실측).
+줄을 나눌 자리는 원고의 줄바꿈(`
+`)이 정한다 — 렌더러가 알아서 접게 두지 않는다.
+
 **판형은 둘이 정한다.** 소재가 창을 정한다 — 화면 녹화·스크린샷은 기본 창, 사진은 `full`, 소재 없음은 텍스트 카드.
-내용이 요약 카드를 정한다 — 절차 주제면 5번을 `steps`(항목 15자 안쪽, 클립 없음), 대비 주제면 `compare`.
-1번은 항상 `cover` + `kicker`(한 줄 킥 라벨), 6번은 `cta`. 정보 4장(2~5번) 안에 요약 카드가 들어간다.
+**요약 카드(`steps`·`compare`)는 선택이다. 넣는 게 기본이 아니다.**
+원고가 **실제로 절차**(순서가 있는 3~5단계)면 그중 한 장을 `steps`,
+원고가 **실제로 대비**(전/후, 통념/사실처럼 두 짝이 있는 것)면 한 장을 `compare`로 바꾼다.
+둘 다 아니면 **넣지 않는다** — 억지로 끼우면 모든 덱이 똑같이 비교표 한 장씩 물고 나온다(2026-08-23 반려).
+두 짝을 만들어내야 한다면 그건 대비 주제가 아니다.
+
+1번은 항상 `cover` + `kicker`(한 줄 킥 라벨), 마지막은 `cta`. 나머지는 정보 카드다.
 
 ## 턴 3 — 기획안 표 + 승인
 

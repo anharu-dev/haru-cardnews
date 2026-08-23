@@ -391,10 +391,19 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
      기본 무드가 이거라서, 강조 문법을 처음 써본 사람은 아무 일도 안 일어나는 걸 본다(2026-08-13).
      무드 정체성이 '색 없음'인 건 의도한 설계라 색을 넣지 않고, 그때만 색면으로 표시한다.
      밑줄이 아니라 색면인 이유: 밑줄은 한글 받침을 갉아먹는다. */
+  const EMPH_FILL = brand.surface === 'dark' ? 'rgba(255,255,255,0.16)' : 'rgba(16,16,16,0.11)';
   const titleEmph: CSSProperties = t.accent === t.ink
     ? {
-        background: brand.surface === 'dark' ? 'rgba(255,255,255,0.16)' : 'rgba(16,16,16,0.11)',
-        borderRadius: 8, padding: '0 0.10em',
+        /* 2026-08-23 — 인라인 span의 배경은 폰트 메트릭(어센트~디센트) 전체를 칠한다.
+           한글은 그 상자의 위쪽에만 앉아서, 색면이 **글자보다 아래로 101px 늘어지고 위로는
+           5px 잘렸다**(실측: 상자 288px, 글자 192px). "배경이 밑으로 치우쳐졌다" 반려의 실체다.
+           그래서 상자를 칠하지 말고 **그라데이션으로 글자 띠만** 칠한다 — em 단위라 배율이
+           바뀌어도 따라온다. 라운드는 뺐다: 칠하는 영역이 상자보다 작아 모서리가 안 맞는다. */
+        backgroundImage: `linear-gradient(${EMPH_FILL}, ${EMPH_FILL})`,
+        backgroundSize: '100% 1.03em',
+        backgroundPosition: '0 0',
+        backgroundRepeat: 'no-repeat',
+        padding: '0.11em 0.10em',
         boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone',
       }
     : { color: t.accent };
@@ -658,6 +667,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     /* 2026-08-22 — 상한이 1이라 '줄이기'만 됐다. "알약이 있어 허전해 보이지 않는다"고 적어뒀지만
        실측하니 콘텐츠가 카드의 36%뿐이고 위아래가 각각 3분의 1씩 비었다 — 비교·단계 카드가
        겪은 것과 같은 병이다. 배율마다 다시 재서(키우면 줄바꿈이 늘어난다) 안 넘치는 최대값을 쓴다. */
+    /* 2026-08-23 — 상한을 2.2까지 올리고 '접히지 않는 배율' 가드를 붙여봤다. 한 단어 CTA는
+       27%→32%밖에 못 올라갔고(제목·본문·알약 셋뿐이라 구조적으로 그렇다), 가드는 오히려
+       흔한 2줄 CTA를 1.5→1.3으로 줄여 손해였다(lineCount가 공백까지 세서 보수적으로 판정).
+       → 되돌렸다. CTA는 46~48%에서 굵은 제목+알약으로 이미 성립한다. 이 카드에 55% 기준을
+       그대로 대지 않는다. 다시 올리고 싶으면 배율이 아니라 구조를 더할 것. */
     let ctaFit = 1;
     for (const f of [1.5, 1.4, 1.3, 1.2, 1.1, 1.0]) {
       if (ctaTitleH(f) + ctaBodyH(f) + CTA_PILL_BLOCK * f <= ctaRoom) { ctaFit = f; break; }
@@ -808,7 +822,15 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     const m = fitsAt(cmpFit);
     const titleSize = 64 * cmpFit;
     /* 박스 판형이라 너무 납작하면 어색하다 — 최소 높이를 준다 */
-    const panelH = Math.min(maxPanelH, Math.max(m.ph + 56 * cmpFit, 260 * cmpFit));
+    const basePanelH = Math.max(m.ph + 56 * cmpFit, 260 * cmpFit);
+    /* 2026-08-23 — 실사용 덱(짧은 문구)에서 채움 41%, 위 27%·아래 32%가 통째로 비었다.
+       배율(cmpFit)은 이미 상한까지 올라가 있었다 — 남은 문제는 **패널이 남는 세로 공간을
+       안 먹는다**는 것뿐이었다. steps 카드가 같은 병을 slack을 패널 여백에 먹여 고쳤고(채움 70%),
+       여기도 같은 처방을 쓴다. 패널이 커져도 라벨·문구는 세로 가운데 정렬이라 자리를 지키고,
+       구분선·VS 배지는 panelH에서 파생되니 따라온다.
+       남는 걸 전부 먹이면 카드가 통짜 박스가 되니 절반만, 상한 320. */
+    const slack = Math.max(0, (outerBottom - outerTop) - (m.th + blockGap * cmpFit + basePanelH + m.cb));
+    const panelH = Math.min(maxPanelH, basePanelH + Math.min(slack * 0.5, 320));
     const blockH = m.th + blockGap * cmpFit + panelH + m.cb;
     /* [outerTop, outerBottom] 안에서 여백을 반씩 나눴더니 실제로는 안 맞았다 — 마스트헤드
        예약분(outerTop=200)이 하단 안전여백(BOTTOM_SAFE=96)보다 훨씬 커서, 그 존 안에서
@@ -1125,7 +1147,15 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     /* 창이 없어 공간이 두 배인데 창 카드와 같은 배율이면 허전하다(실측). CTA·비교·단계처럼
        자기 공간 기준으로 키운다 — 배율마다 다시 재서(키우면 줄바꿈이 는다) 안 넘치는 최대값.
        본문은 한 문장 = 한 줄을 지키는 선까지만 키운다. */
-    const room = 1350 - 200 - BOTTOM_SAFE;
+    /* 2026-08-23 — 이 카드가 채움 25%였다(실측). 아래 절반이 통째로 죽어 있었다.
+       처음엔 패널 박스로 감쌌더니 60%는 됐지만 "테두리 친 회색 박스에 글자"라 반려됐다.
+       그래서 실제 카드뉴스 템플릿(미리캔버스 24종)을 다시 봤다. 그림 없는 텍스트 템플릿들은
+       예외 없이 같은 뼈대다 — **상단 라벨 → 큰 제목 → 작은 본문 → 하단 띠(색 바).**
+       아래가 죽는 건 박스가 없어서가 아니라 **바닥을 잡아주는 띠가 없어서**였다.
+       띠를 깔면 콘텐츠 존이 그만큼 좁아져 제목도 자연히 커진다. 박스는 걷어냈다 —
+       박스를 없애니 글자 폭이 다시 카드 폭(TEXT_W)이라 제목이 한 단 더 커진다. */
+    const BAND_H = 168;                    // 하단 띠 — 색면으로 바닥을 잡는다
+    const room = 1350 - 200 - BAND_H - 40; // 띠 위로 숨 쉴 틈 40
     /* 제목과 본문 배율을 따로 잡는다. 본문은 "한 문장 = 한 줄"이 먼저라 그 선까지만,
        제목은 남는 공간에 맞춰 더 키운다 — 하나로 묶으면 본문이 한 줄 꽉 찬 카드에서
        제목까지 작게 남는다(실측: 배율이 전혀 안 먹었다). */
@@ -1134,30 +1164,58 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
       if (blocks.every((b) => b.kind === 'code' || lineCount(b.text, deckBodySize * f, BODY_TRACK, TEXT_W * 0.88) <= 1)) { bf = f; break; }
     }
     const tBody = deckBodySize * bf;
-    const measure = (tfac: number) => {
+    const 제목높이 = (tfac: number) => {
       const tt = TITLE_SIZE * fit * tfac;
-      const th = titleLines.reduce((n, l) => n + lineCount(l, tt, TITLE_TRACK, TEXT_W * 0.88), 0) * tt * TITLE_LH;
-      const bh = blocks.reduce((h, b) => h + (b.kind === 'code' ? tBody * 1.5 + 28 : lineCount(b.text, tBody, BODY_TRACK, TEXT_W) * tBody * BODY_LH), 0);
-      return 4 + 36 * tfac + th + (blocks.length ? BODY_GAP * fit * tfac + bh : 0);
+      return titleLines.reduce((n, l) => n + lineCount(l, tt, TITLE_TRACK, TEXT_W * 0.88), 0) * tt * TITLE_LH;
     };
-    let tf = 1;
-    for (const f of [1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0]) {
+    const 본문높이 = blocks.reduce((h, b) => h + (b.kind === 'code' ? tBody * 1.5 + 28 : lineCount(b.text, tBody, BODY_TRACK, TEXT_W) * tBody * BODY_LH), 0);
+    const measure = (tfac: number) =>
+      제목높이(tfac) + (blocks.length ? BODY_GAP * fit * tfac + 본문높이 : 0);
+    /* 2026-08-23 — `let tf = 1`로 시작해서 **어떤 배율도 조건을 못 맞추면 가드가 조용히
+       무효화**되고 있었다(초기값 1이 그대로 쓰임). 실제로 "손님은 계산부터 합니다"가 3줄로
+       터져 마지막 어절이 혼자 떨어졌다. steps 카드가 쓰는 처방을 그대로 쓴다 — **1.0 아래로도
+       내려가며 찾고**, 그래도 안 되는 긴 줄이면 접히게 두되 높이만 맞춘다. */
+    let tf = 0;
+    for (const f of [1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0, 0.94, 0.88, 0.82]) {
       /* 원고의 \n 줄이 각각 한 줄에 앉는 배율까지만 — 더 키우면 "하나"처럼 마지막 어절이
          혼자 떨어져 아마추어로 보인다(실측). 줄바꿈은 쓴 사람이 정한 자리에서만 일어난다. */
       const noWrap = titleLines.every((l) => lineCount(l, TITLE_SIZE * fit * f, TITLE_TRACK, TEXT_W * 0.88) <= 1);
       if (measure(f) <= room && noWrap) { tf = f; break; }
     }
+    /* 한 줄이 안 되는 긴 제목일 때 **가장 큰 배율**을 고르면 오히려 더 잘게 접힌다
+       (실측: 1.2에서 4줄, 1.0에서 3줄). 이때 지켜야 할 건 크기가 아니라 **줄 수**다 —
+       줄 수가 가장 적은 배율을 고르고, 같으면 큰 쪽을 쓴다. */
+    if (!tf) {
+      const 줄수 = (f: number) =>
+        titleLines.reduce((n, l) => n + lineCount(l, TITLE_SIZE * fit * f, TITLE_TRACK, TEXT_W * 0.88), 0);
+      const 후보 = [1.2, 1.1, 1.0, 0.94, 0.88, 0.82, 0.76].filter((f) => measure(f) <= room);
+      tf = 후보.sort((a, b) => (줄수(a) - 줄수(b)) || (b - a))[0] ?? 0.76;
+    }
     const tTitle = TITLE_SIZE * fit * tf;
     const blockH = measure(tf);
-    const top = Math.max(200, Math.min((1350 - blockH) * 0.45, 1350 - BOTTOM_SAFE - blockH));
-    const accentBar = t.accent === t.ink ? `color-mix(in srgb, ${t.ink} 28%, ${t.page})` : t.accent;
+    const zoneTop = 200;
+    const zoneBottom = 1350 - BAND_H;
+    /* 2026-08-23 — 가운데를 뭘로 채울지의 답: **채우지 않는다. 위아래로 벌린다.**
+       숫자 배지(01/02/03)·아이콘 타일·도형 패턴은 전부 "AI티" 목록에 있는 것들이라 넣지 않는다.
+       레퍼런스가 가운데를 채우는 건 일러스트인데 우리는 그게 없다 — 없는 걸 흉내 내면 티가 난다.
+       대신 **제목은 위, 본문은 띠 바로 위**에 붙여서 여백을 '남은 자리'가 아니라 '의도한 자리'로
+       만든다(잡지 레이아웃의 기본 수법). 덩어리가 커서 벌릴 자리가 없으면 예전처럼 붙여 쌓는다. */
+    const 제목H = 제목높이(tf);
+    const 본문H = blocks.length ? 본문높이 : 0;
+    const 벌림여유 = (zoneBottom - zoneTop) - (제목H + 본문H);
+    const 벌린다 = blocks.length > 0 && 벌림여유 >= 260;
+    const top = 벌린다 ? zoneTop + 64 : zoneTop + Math.max(0, (zoneBottom - zoneTop - blockH) / 2);
+    /* 띠 색 — **액센트를 쓰지 않는다.** 주황·형광 같은 액센트를 전면 띠로 깔면 흔한 AI 생성물
+       티가 난다는 반려를 받았다(2026-08-23). 잉크로 간다 — 밝은 무드에선 검정 띠, 어두운
+       무드에선 밝은 띠라 어느 무드에서도 바닥이 잡히고 색이 튀지 않는다. */
+    const bandBg = t.ink;
+    const bandFg = pickOn(bandBg, INK, '#ffffff');
     return (
       <AbsoluteFill style={{ backgroundColor: t.page }}>
         <Grain level={brand.texture} />
         <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
         <Masthead text={mastheadText} color={t.ink} />
         <div style={{ position: 'absolute', left: M, right: M, top }}>
-          <div style={{ width: 120, height: 4, background: accentBar, marginBottom: 36 * tf }} />
           <div
             style={{
               fontFamily: look.제목글꼴, fontSize: tTitle, fontWeight: look.제목굵기, color: t.ink,
@@ -1166,7 +1224,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           >
             {titleLines.map((l, i) => <div key={i}>{emphasize(l, titleEmph)}</div>)}
           </div>
-          {blocks.length ? (
+          {blocks.length && !벌린다 ? (
             <div style={{ marginTop: BODY_GAP * fit * tf }}>
               {blocks.map((b, i) => (
                 <div
@@ -1182,6 +1240,42 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
               ))}
             </div>
           ) : null}
+        </div>
+
+        {/* 벌린 배치일 때의 본문 — 띠 바로 위에 붙는다. 제목은 위, 본문은 아래에 앉아
+            가운데 여백이 '남은 자리'가 아니라 '둘 사이'로 읽힌다. */}
+        {blocks.length && 벌린다 ? (
+          <div style={{ position: 'absolute', left: M, right: M, bottom: BAND_H + 72 }}>
+              {blocks.map((b, i) => (
+                <div
+                  key={i}
+                  style={b.kind === 'code'
+                    ? { display: 'inline-block', marginTop: i === 0 ? 0 : 14, marginBottom: 14, padding: '14px 22px', borderRadius: 14,
+                        background: t.chipBg, color: t.chipText, fontFamily: MONO, fontSize: tBody * 0.82, fontWeight: 500, lineHeight: 1.35, wordBreak: 'break-all' }
+                    : { fontFamily: look.본문글꼴, fontSize: tBody, fontWeight: 400, color: t.body,
+                        lineHeight: BODY_LH, wordBreak: 'keep-all', overflowWrap: 'anywhere', letterSpacing: `${BODY_TRACK}em` }}
+                >
+                  {b.kind === 'code' ? b.text : emphasize(b.text, bodyEmph)}
+                </div>
+              ))}
+          </div>
+        ) : null}
+
+        {/* 하단 띠 — 실제 카드뉴스 템플릿이 예외 없이 갖고 있는 것(미리캔버스 24종 재확인).
+            아래를 색면으로 잡아주지 않으면 텍스트 카드는 무슨 짓을 해도 "글자만 뜬 흰 화면"이 된다.
+            내용은 넣지 않는다 — 계정명은 showHandle을 켠 사람만 나가고(§핸들), 페이지 번호는
+            렌더러가 자기 순번을 모른다. 넘김 화살표 하나면 캐러셀이라는 신호로 충분하다. */}
+        <div
+          style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, height: BAND_H,
+            background: bandBg,
+            display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+            paddingRight: M,
+          }}
+        >
+          <div style={{ fontFamily: look.본문글꼴, fontSize: 44, fontWeight: 800, color: bandFg, opacity: 0.9 }}>
+            →
+          </div>
         </div>
       </AbsoluteFill>
     );
