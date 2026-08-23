@@ -33,6 +33,18 @@ Node.js·git 몰라도 됩니다. Claude Code를 켠 상태에서(터미널에 `
 > 개발자라 렌더러 코드를 직접 보거나 고치고 싶으시면 아래 "내 카드뉴스 만들기" 절부터
 > 보시면 됩니다 — 그건 `git clone`으로 별도 받는 경로입니다.
 
+## 업데이트
+
+새 버전이 나오면 채팅창에 이 세 줄을 차례로 칩니다(플러그인은 자동으로 갱신되지 않습니다):
+
+```
+/plugin marketplace update haru-cardnews
+/plugin uninstall haru-cardnews@haru-cardnews
+/plugin install haru-cardnews@haru-cardnews
+```
+
+그다음 Claude Code를 한 번 껐다 켜세요 — 열려 있던 대화는 옛 버전을 기억하고 있습니다.
+
 ## 쓰는 법
 
 **대화로 만들기 (권장)** — 채팅창에 이렇게 치면 됩니다.
