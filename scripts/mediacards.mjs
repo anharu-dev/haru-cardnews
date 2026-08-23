@@ -214,17 +214,9 @@ for (let i = 0; i < deck.cards.length; i++) {
      minimal·solid는 아예 안 쓰며 frame은 있으면 쓰고 없으면 타이포로 찬다(2026-08-22). */
   const needsClip = deck.cards[i].cover && deck.brand?.mood === 'photo';
   const isTypographic = (deck.cards[i].cover && !needsClip)
-    || deck.cards[i].cta || deck.cards[i].compare || deck.cards[i].steps;
-  if (!isTypographic && !deck.cards[i].clip) {
-    console.error(
-      `\n카드 ${i + 1}에 clip이 없습니다.\n` +
-      `  이 도구는 '실제 화면 위에 글자를 얹는' 카드를 만듭니다 — 창에 넣을 자료가 있어야 합니다.\n` +
-      `  · 영상(mp4) 또는 이미지(png/jpg)를 public/clips/<폴더>/ 에 넣고\n` +
-      `    덱의 해당 카드에 "clip": "clips/<폴더>/<파일명>" 을 적으세요.\n` +
-      `  · 글자만 있는 카드를 원하면 "cta": true, 비교표는 "compare", 번호 목록은 "steps"를 쓰세요.\n`,
-    );
-    process.exit(1);
-  }
+    || deck.cards[i].cta || deck.cards[i].compare || deck.cards[i].steps || !deck.cards[i].clip;
+  /* clip 없는 일반 카드는 텍스트 카드로 렌더된다(2026-08-23). 예전엔 여기서 막았는데,
+     화면 녹화·사진이 없는 사용자가 정보 카드를 만들 길이 없었다. */
 
   const info = deck.cards[i].clip ? await probeClip(deck.cards[i].clip, i + 1) : null;
   /* **검증한 경로를 그대로 렌더러에 넘긴다.** 예전엔 safeClipPath()가 만든 안전한 경로를
@@ -275,7 +267,7 @@ for (let i = 0; i < deck.cards.length; i++) {
      화면 녹화(mp4)는 원래부터 실제 움직임이 있어서 항상 영상으로 나간다.
      "이미지도 무조건 켄번즈 mp4"였던 예전 기본값이 실사용에서 반려됐다(2026-08-13) —
      스톡 사진 카드가 이유 없이 재생 버튼 붙은 동영상으로 나가서 이상해 보였다. */
-  const isStill = !!card.cover || !!card.cta || !!card.compare || !!card.steps || (isImage && !card.motion);
+  const isStill = !!card.cover || !!card.cta || !!card.compare || !!card.steps || !card.clip || (isImage && !card.motion);
   const outFile = join('out', deckName, `${n}.${isStill ? 'png' : 'mp4'}`);
   console.log(`카드 ${i + 1}/${deck.cards.length}: ${card.title.replace(/\n/g, ' ')} ${isStill ? '(정지 PNG)' : `(${(durFrames / 30).toFixed(1)}s)`}`);
 

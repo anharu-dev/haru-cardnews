@@ -1079,6 +1079,77 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     return 31 * fit;
   })();
 
+  /* 텍스트 카드 — clip 없는 일반 정보 카드 (2026-08-23 신설).
+     그전까지 표지·CTA·비교·단계가 아닌 카드는 clip이 없으면 렌더 스크립트가 막았다.
+     그러면 화면 녹화·사진이 없는 사용자는 정보 카드를 만들 길이 없다 — 실제 테스터(소재 없음)가
+     거기서 막혔다. 무드 바탕 위에 제목·본문만 앉히되, "흰 바탕에 글자만"이 되지 않게
+     무드 강조색 짧은 막대 하나로 구조를 세운다. 글자 배율은 덱 공통(fit)을 그대로 쓴다. */
+  if (!clipSrc) {
+    /* 창이 없어 공간이 두 배인데 창 카드와 같은 배율이면 허전하다(실측). CTA·비교·단계처럼
+       자기 공간 기준으로 키운다 — 배율마다 다시 재서(키우면 줄바꿈이 는다) 안 넘치는 최대값.
+       본문은 한 문장 = 한 줄을 지키는 선까지만 키운다. */
+    const room = 1350 - 200 - BOTTOM_SAFE;
+    /* 제목과 본문 배율을 따로 잡는다. 본문은 "한 문장 = 한 줄"이 먼저라 그 선까지만,
+       제목은 남는 공간에 맞춰 더 키운다 — 하나로 묶으면 본문이 한 줄 꽉 찬 카드에서
+       제목까지 작게 남는다(실측: 배율이 전혀 안 먹었다). */
+    let bf = 1;
+    for (const f of [1.25, 1.15, 1.0]) {
+      if (blocks.every((b) => b.kind === 'code' || lineCount(b.text, deckBodySize * f, BODY_TRACK, TEXT_W * 0.88) <= 1)) { bf = f; break; }
+    }
+    const tBody = deckBodySize * bf;
+    const measure = (tfac: number) => {
+      const tt = TITLE_SIZE * fit * tfac;
+      const th = titleLines.reduce((n, l) => n + lineCount(l, tt, TITLE_TRACK, TEXT_W * 0.88), 0) * tt * TITLE_LH;
+      const bh = blocks.reduce((h, b) => h + (b.kind === 'code' ? tBody * 1.5 + 28 : lineCount(b.text, tBody, BODY_TRACK, TEXT_W) * tBody * BODY_LH), 0);
+      return 4 + 36 * tfac + th + (blocks.length ? BODY_GAP * fit * tfac + bh : 0);
+    };
+    let tf = 1;
+    for (const f of [1.6, 1.5, 1.4, 1.3, 1.2, 1.1, 1.0]) {
+      /* 원고의 \n 줄이 각각 한 줄에 앉는 배율까지만 — 더 키우면 "하나"처럼 마지막 어절이
+         혼자 떨어져 아마추어로 보인다(실측). 줄바꿈은 쓴 사람이 정한 자리에서만 일어난다. */
+      const noWrap = titleLines.every((l) => lineCount(l, TITLE_SIZE * fit * f, TITLE_TRACK, TEXT_W * 0.88) <= 1);
+      if (measure(f) <= room && noWrap) { tf = f; break; }
+    }
+    const tTitle = TITLE_SIZE * fit * tf;
+    const blockH = measure(tf);
+    const top = Math.max(200, Math.min((1350 - blockH) * 0.45, 1350 - BOTTOM_SAFE - blockH));
+    const accentBar = t.accent === t.ink ? `color-mix(in srgb, ${t.ink} 28%, ${t.page})` : t.accent;
+    return (
+      <AbsoluteFill style={{ backgroundColor: t.page }}>
+        <Grain level={brand.texture} />
+        <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
+        <Masthead text={mastheadText} color={t.ink} />
+        <div style={{ position: 'absolute', left: M, right: M, top }}>
+          <div style={{ width: 120, height: 4, background: accentBar, marginBottom: 36 * tf }} />
+          <div
+            style={{
+              fontFamily: look.제목글꼴, fontSize: tTitle, fontWeight: look.제목굵기, color: t.ink,
+              letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH, wordBreak: 'keep-all', overflowWrap: 'anywhere',
+            }}
+          >
+            {titleLines.map((l, i) => <div key={i}>{emphasize(l, titleEmph)}</div>)}
+          </div>
+          {blocks.length ? (
+            <div style={{ marginTop: BODY_GAP * fit * tf }}>
+              {blocks.map((b, i) => (
+                <div
+                  key={i}
+                  style={b.kind === 'code'
+                    ? { display: 'inline-block', marginTop: i === 0 ? 0 : 14, marginBottom: 14, padding: '14px 22px', borderRadius: 14,
+                        background: t.chipBg, color: t.chipText, fontFamily: MONO, fontSize: tBody * 0.82, fontWeight: 500, lineHeight: 1.35, wordBreak: 'break-all' }
+                    : { fontFamily: look.본문글꼴, fontSize: tBody, fontWeight: 400, color: t.body,
+                        lineHeight: BODY_LH, wordBreak: 'keep-all', overflowWrap: 'anywhere', letterSpacing: `${BODY_TRACK}em` }}
+                >
+                  {b.kind === 'code' ? b.text : emphasize(b.text, bodyEmph)}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </AbsoluteFill>
+    );
+  }
+
   /* 전면 판형 — 자료가 카드를 꽉 채우고 하단 스크림 위에 흰 글자를 얹는다.
      기본 창 판형(상단 블랙 존 + 하단 흰 글 존)은 화면 녹화용이다: 자료를 안 깎는 대신 자료가
      카드의 절반만 쓴다. 사진·생성이미지는 반대로 자료가 주인공이라 꽉 채우는 게 맞다.
