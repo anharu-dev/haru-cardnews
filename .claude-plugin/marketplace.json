@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "haru-cardnews",
-      "description": "주제만 말하면 인터뷰·기획·렌더까지. 실화면 클립 위에 카피를 얹은 4:5 캐러셀 카드를 만듭니다.",
+      "description": "실화면 클립·사진 위에 카피를 얹은 4:5 캐러셀 카드를 대화로 기획하고 슬라이드별 mp4/png로 렌더한다.",
       "source": "./",
       "category": "content"
     }

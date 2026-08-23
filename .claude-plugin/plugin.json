@@ -1,8 +1,8 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "haru-cardnews",
-  "version": "1.2.0",
-  "description": "실화면 클립 위에 카피를 얹은 인스타 캐러셀 카드(4:5)를 대화로 기획하고 렌더합니다. 주제를 인터뷰하고, 기획안을 보여주고, 승인받은 뒤 mp4/png로 뽑습니다.",
+  "version": "1.3.0",
+  "description": "실화면 클립·사진 위에 카피를 얹은 인스타 캐러셀 카드(4:5)를 대화로 기획하고 렌더한다. 주제 인터뷰 → 기획안 승인 → 렌더. 출력은 슬라이드 한 장 = 파일 한 개.",
   "author": {
     "name": "AI 안하루",
     "url": "https://github.com/anharu-dev"
