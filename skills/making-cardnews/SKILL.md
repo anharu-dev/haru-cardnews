@@ -58,8 +58,14 @@ find "$USERPROFILE/Downloads" "$USERPROFILE/Desktop" "$USERPROFILE/Videos" "$USE
 
 **직접 줄게요** → 경로를 받아 `<렌더러폴더>/public/clips/<주제slug>/`로 복사한다. 사용자는 경로를 알 필요 없다.
 
-**없어요** → 주제에서 영어 검색어 하나를 뽑아 Openverse(키 불필요, CC0·CC BY만)에서 사진 3장을 받고,
-**사용자 화면에 실제로 띄운 뒤** 이 위젯의 소재 칸으로 고르게 한다(기타 = 다른 검색어).
+**없어요** → **사진 없이 간다.** 표지는 무드 색면 위 타이포(`cover`에 `clip` 없이), 정보 카드는 텍스트 카드.
+사진을 억지로 구해 넣지 않는다 — 무료 사진 창고(Openverse)는 흔한 주제에서도 엉뚱한 사진이 나온다
+(실측: 5개 주제 중 쓸 만한 게 1개. "slow running"에 갠지스강이 나왔다). 엉뚱한 사진이 든 카드가
+사진 없는 카드보다 훨씬 나쁘다.
+
+단, **스톡 품질 소스로 제한한 검색**이 3장 이상 주면 그때만 제안한다(`&source=stocksnap,rawpixel,wordpress`).
+3장 미만이면 조용히 사진 없이 간다 — 사용자에게 "사진 못 찾았다"고 말할 필요도 없다.
+사진이 있을 때는 **사용자 화면에 실제로 띄운 뒤** 이 위젯의 소재 칸으로 고르게 한다(기타 = 사진 없이).
 
 사진을 띄우는 법 — **Read 도구는 사용자에게 안 보인다.** 어시스턴트만 보고 사용자 화면엔 "읽기 파일 3개"로
 접힌다. 사진을 안 보여주고 "어느 게 마음에 드세요?"라고 묻는 게 바로 그 실수다(2026-08-23 테스터 반려).
@@ -68,7 +74,7 @@ find "$USERPROFILE/Downloads" "$USERPROFILE/Desktop" "$USERPROFILE/Videos" "$USE
    Mac `open "<렌더러폴더>/public/clips/<주제slug>"` — 그리고 "방금 열린 폴더의 사진 3장입니다"라고 말한다.
 3. 옵션 라벨은 `photo-2 — 라떼 내리는 손`처럼 사진 내용 한 줄을 붙인다. 추천은 세로 비율인 것.
 사진을 띄우지 못했으면 묻지 않는다 — 폴더 경로를 알려주고 "확인하신 뒤 번호를 골라주세요"로 간다.
-**고른 사진은 표지(1번)에만 쓴다.** 정보 카드는 **텍스트 카드**(clip 없는 일반 카드 — 무드 바탕 위 제목·본문)로 가고,
+출력이 `NONE`이면 사진 없이 간다. **고른 사진은 표지(1번)에만 쓴다.** 정보 카드는 **텍스트 카드**(clip 없는 일반 카드 — 무드 바탕 위 제목·본문)로 가고,
 절차·대비 주제면 그중 한 장을 `steps`·`compare`로 바꾼다.
 
 ```bash
@@ -76,8 +82,9 @@ cd "<렌더러폴더>" && node -e '
 const q = process.argv[1]; const dir = "public/clips/" + process.argv[2];
 require("fs").mkdirSync(dir, { recursive: true });
 (async () => {
-  const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&license=cc0,by&aspect_ratio=tall&size=large&page_size=3`);
-  const { results } = await r.json();
+  const r = await fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&license=cc0,by&source=stocksnap,rawpixel,wordpress&aspect_ratio=tall&size=large&page_size=3`);
+  const { results, result_count } = await r.json();
+  if (result_count < 3) { console.log("NONE"); process.exit(0); }   // 3장 미만이면 사진 없이 간다
   for (const [i, p] of results.entries()) {
     const img = await fetch(p.url, { headers: { "User-Agent": "haru-cardnews/1.0" } });
     require("fs").writeFileSync(`${dir}/photo-${i + 1}.jpg`, Buffer.from(await img.arrayBuffer()));
@@ -157,7 +164,7 @@ cd "<렌더러폴더>" && node scripts/mediacards.mjs <주제slug>
 | 이렇게 하고 싶어진다 | 실제로는 |
 |---|---|
 | "질감·카드 수도 확인해야 정확하지" | 기본값이 있는 건 묻지 않는다. 턴 3 기본값 줄에서 뒤집는다. |
-| "키 없으면 사진 못 쓰니 발급 안내를" | Openverse는 키가 없다. 발급 절차는 이 스킬에 없다. |
+| "사진이 없으면 어디서든 구해 넣어야" | 엉뚱한 사진 > 사진 없음. 스톡 소스 3장 이상일 때만, 아니면 색면으로. |
 | "자유 서술이니 채팅에 적어달라고" | 위젯 "기타" 칸이 받는다. 턴을 끊지 않는다. |
 | "소재 찾아주면 편하니 폴더부터 훑자" | 사용자가 "찾아볼게요"를 고른 뒤에만. |
 | "주제만 들었는데 수치가 비어서 검색으로" | 빈칸으로 두고 표에서 묻는다. 지어내지 않는다. |

@@ -432,8 +432,21 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     /* 글자가 사진 위에 직접 얹히는 처리들. 상단박스는 글자가 색면 위에 있으므로 여기 안 든다. */
     const 사진위글자 = 처리 === '하단스크림' || 처리 === '전면틴트' || 처리 === '흑백스크림';
 
-    const ink = 사진위글자 ? '#ffffff' : moodInk;
-    const sub = 사진위글자 ? 'rgba(255,255,255,0.80)' : moodSub;
+    /* 사진이 없는 표지는 **무드 강조색으로 카드를 꽉 채운다**(2026-08-23).
+       무드 바탕 위에 글자만 두면 룩이 제목을 아래에 붙이는 무드(impact)에서 위 3분의 2가
+       텅 빈다 — 첫날부터 반려된 "흰 바탕에 글자만"이 그대로 재현됐다(실측, 테스터 결과물).
+       레퍼런스 표지는 사진이 없으면 전부 색면이다. 글자색은 그 색면에서 읽히는 쪽으로 고른다. */
+    const 색면 = 처리 === '없음';
+    /* 강조색을 전면으로 깔되 **밝기가 극단인 색은 피한다** — 형광 그린(#39ff5a)을 카드 전체에
+       깔면 눈이 아프고 노란 형광펜은 더하다. 그런 무드는 자기 바탕색(검정·흰색)을 쓰고
+       강조는 글자에만 남긴다(상대 휘도 0.62 초과면 전면 부적합). */
+    const 전면부적합 = mood.강조방식 === '형광펜' || luminance(mood.강조) > 0.62;
+    const solidBg = 전면부적합 ? mood.바탕 : mood.강조;
+    const solidInk = pickOn(solidBg, INK, '#ffffff');
+    const ink = 사진위글자 ? '#ffffff' : 색면 ? solidInk : moodInk;
+    const 색면강조 = 색면 && !전면부적합;   // 바탕이 곧 강조색일 때만 강조를 색면으로 뒤집는다
+    const sub = 사진위글자 ? 'rgba(255,255,255,0.80)'
+      : 색면 ? (solidInk === '#ffffff' ? 'rgba(255,255,255,0.78)' : 'rgba(16,16,16,0.66)') : moodSub;
     const emphOnPhoto = mood.사진위강조;
 
     const coverEmph: CSSProperties =
@@ -443,6 +456,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             borderRadius: 6, padding: '0.02em 0.12em',
             boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone',
           }
+        : 색면강조
+          /* 강조색이 곧 바탕이라 색으로는 강조가 안 된다 — 반투명 색면으로 띄운다 */
+          ? { background: solidInk === '#ffffff' ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.10)',
+              borderRadius: 8, padding: '0 0.10em', boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' }
         : { color: 사진위글자 ? (emphOnPhoto ?? ink) : mood.강조 };
 
     const pad = look.여백 + 32;
@@ -452,7 +469,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
        전면틴트는 전체가 고르게 눕혀져 있으므로 화보처럼 가운데에 둔다.
        상단박스는 글자가 색면 위에 있어 안전하므로 룩을 그대로 따른다. */
     const justify =
-      처리 === '전면틴트' ? 'center'
+      처리 === '전면틴트' || 색면 ? 'center'
       : 사진위글자 ? 'flex-end'
       : look.제목위치 === 'top' ? 'flex-start' : look.제목위치 === 'center' ? 'center' : 'flex-end';
     const alignItems = 처리 === '전면틴트' ? 'center' : look.정렬 === 'center' ? 'center' : 'flex-start';
@@ -469,7 +486,24 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
     const titleH = titleLines.reduce(
       (n, l) => n + lineCount(l, titleSize, track, 1080 - pad * 2), 0,
     ) * titleSize * mood.제목행간;
-    const fit = Math.min(1, room / Math.max(1, titleH));
+    let fit = Math.min(1, room / Math.max(1, titleH));
+    /* 색면 표지는 사진이 없어 공간이 통째로 남는다. 상한이 1이면 글자가 그대로라 카드가
+       비어 보인다 — 비교·단계·CTA에서 세 번 고친 것과 같은 병(2026-08-23).
+       배율마다 다시 재서(키우면 줄바꿈이 는다) 원고의 
+ 줄이 각각 한 줄에 앉는 최대값을 쓴다. */
+    if (색면) {
+      const 여유 = 1350 - pad * 2 - (card.kicker ? 90 : 0) - (card.body.length ? 120 : 0);
+      const W = 1080 - pad * 2;
+      /* 원고 한 줄이 카드에서 두 줄까지 접히는 건 허용한다 — 한 줄만 고집하면 "메뉴판 순서
+         하나로"(9자)조차 기본 크기에서 이미 넘쳐 루프가 통째로 헛돈다(실측). 세 줄부터는
+         훅이 아니라 문단이라 거기서 끊는다. */
+      for (const f of [1.7, 1.6, 1.5, 1.4, 1.3, 1.2, 1.1]) {
+        const rows = titleLines.reduce((n, l) => n + lineCount(l, titleSize * f, track, W * 0.9), 0);
+        const th = rows * titleSize * f * mood.제목행간;
+        const perLineOk = titleLines.every((l) => lineCount(l, titleSize * f, track, W * 0.9) <= 2);
+        if (th <= 여유 && perLineOk && rows <= 3) { fit = f; break; }
+      }
+    }
 
     const media = (extra?: CSSProperties) =>
       isImageClip ? (
@@ -479,7 +513,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
       );
 
     return (
-      <AbsoluteFill style={{ backgroundColor: moodBg }}>
+      <AbsoluteFill style={{ backgroundColor: 색면 ? solidBg : moodBg }}>
         {처리 === '상단박스' ? (
           /* 사진을 카드 폭에 꽉 채워 반으로 자르면, 사진과 색면이 아무 관계 없이 위아래로
              붙어 있는 꼴이 된다(2026-08-22 반려). 레퍼런스 템플릿은
@@ -521,17 +555,20 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             position: 'absolute', left: 0, right: 0,
             top: 박스 ? pad + 박스사진H : 0, bottom: 0, padding: pad,
             display: 'flex', flexDirection: 'column',
-            justifyContent: 박스 ? 'center' : justify, alignItems, textAlign,
+            /* 색면 표지는 글자가 주인공이라 덩어리를 가운데 뭉치면 위아래가 그대로 빈다(채움 45% 실측).
+               킥은 위, 제목은 가운데, 본문은 아래로 밀어 카드 세로를 실제로 쓴다. */
+            justifyContent: 색면 ? 'space-between' : 박스 ? 'center' : justify, alignItems, textAlign,
           }}
         >
           {card.kicker ? (
             <div
               style={{
                 display: 'inline-block', marginBottom: 26,
-                padding: 사진위글자 ? '12px 24px' : '0',
                 borderRadius: 999,
-                background: 사진위글자 ? 'rgba(255,255,255,0.20)' : 'transparent',
-                color: 사진위글자 ? '#ffffff' : (mood.킥라벨색 ?? mood.강조),
+                padding: 사진위글자 || 색면 ? '12px 24px' : '0',
+                background: 사진위글자 ? 'rgba(255,255,255,0.20)'
+                  : 색면 ? (solidInk === '#ffffff' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.10)') : 'transparent',
+                color: 사진위글자 ? '#ffffff' : 색면 ? ink : (mood.킥라벨색 ?? mood.강조),
                 fontFamily: look.본문글꼴, fontSize: 30, fontWeight: 700, letterSpacing: '-0.02em',
               }}
             >

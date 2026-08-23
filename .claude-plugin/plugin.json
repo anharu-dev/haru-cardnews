@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "haru-cardnews",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "실화면 클립 위에 카피를 얹은 인스타 캐러셀 카드(4:5)를 대화로 기획하고 렌더합니다. 주제를 인터뷰하고, 기획안을 보여주고, 승인받은 뒤 mp4/png로 뽑습니다.",
   "author": {
     "name": "AI 안하루",
