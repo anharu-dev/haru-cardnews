@@ -210,10 +210,10 @@ for (let i = 0; i < deck.cards.length; i++) {
   /* clip 없는 일반 카드는 창이 빈 검은 상자로 나가므로 미리 막는다.
      (2026-08-12: 예전엔 여기서 join(undefined)로 원시 스택트레이스를 뱉고 죽었다)
      cta·compare·steps는 원래 미디어가 없는 타이포 전용 카드라 예외다. */
-  /* 표지(cover)는 무드에 따라 자료 없이도 성립한다 — photo 무드만 사진이 필요하고,
-     minimal·solid는 아예 안 쓰며 frame은 있으면 쓰고 없으면 타이포로 찬다(2026-08-22). */
-  const needsClip = deck.cards[i].cover && deck.brand?.mood === 'photo';
-  const isTypographic = (deck.cards[i].cover && !needsClip)
+  /* 표지(cover)는 자료가 없어도 성립한다 — 무드가 색면 위 타이포로 채운다.
+     2026-08-25: 여기 `deck.brand?.mood === 'photo'` 검사가 남아 있었다. 실제 무드는
+     press·neon… 11종이라 이 조건은 영원히 거짓이었다(옛 무드 4종 시절 잔재). */
+  const isTypographic = deck.cards[i].cover
     || deck.cards[i].cta || deck.cards[i].compare || deck.cards[i].steps || !deck.cards[i].clip;
   /* clip 없는 일반 카드는 텍스트 카드로 렌더된다(2026-08-23). 예전엔 여기서 막았는데,
      화면 녹화·사진이 없는 사용자가 정보 카드를 만들 길이 없었다. */

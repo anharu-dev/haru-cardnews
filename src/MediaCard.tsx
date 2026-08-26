@@ -26,9 +26,7 @@ const lineCount = (s: string, fontSize: number, tracking: number, boxW: number) 
  * 하단 = 화이트 텍스트 존(제목 + 본문 줄들). 슬라이드 1장 = 영상 1개.
  * 한 문장 = 한 줄(body 배열이 곧 줄바꿈).
  *
- * theme: 'ink'(기본) = 잉크 상단 존에 창이 뜸 / 'white' = 순백 바탕에 헤어라인 창.
- * 클립이 대개 밝은 UI 화면이라 잉크가 기본 — 창 경계가 서고 흰 카드뿐인 피드에서 눈에 걸린다.
- * 덱 brand.theme 으로 덮어쓴다.
+ * 색·글꼴·표지 골격은 덱의 `brand.mood`가 정한다(정본: public/moods.json).
  */
 export type MediaCardDef = {
   clip?: string;           // clips/<...>.mp4 또는 .png/.jpg. cta 카드는 생략
@@ -126,6 +124,11 @@ const BOTTOM_SAFE = 96;            // 이 아래로는 글자가 내려가지 �
 
 const TEXT_W = 1080 - M * 2;       // 텍스트 컬럼 폭 — 미디어 존과 같은 968
 const TITLE_SIZE = 92;
+/* 2026-08-25 — `public/moods.json`의 룩 3종(impact·magazine·minimal)은 `제목행간`·`본문행간`을
+   각각 갖고 있는데 이 파일은 그걸 **한 번도 읽지 않는다.** 아래 상수가 항상 이긴다.
+   지금 배선하지 않는 이유: TITLE_LH가 판형 5곳의 fit 루프에 상수로 박혀 있어서,
+   룩마다 다른 값이 되면 배율 계산이 전부 어긋난다. Phase 2(제목 행별 스타일)에서
+   fit 루프를 고칠 때 같이 배선한다. moods.json은 원본 대조(moods-verify) 대상이라 지우지 않는다. */
 const TITLE_LH = 1.14;
 const TITLE_TRACK = -0.035;        // 제목 자간(em) — 높이 계산과 실제 렌더가 같은 값을 써야 한다
 const BODY_SIZE = 43;
@@ -356,7 +359,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
      넘기면 표지만 무드고 나머지는 무드를 바꿔도 똑같아, 다른 도구가 만든 카드처럼 보였다.
      본문 카드가 색을 t에서 38곳으로 나눠 쓰고 있으므로 **t를 무드로 조립한다** —
      그러면 그 38곳을 건드리지 않고도 색이 무드를 따라간다. */
-  const moodAccent = brand.accent ?? mood.강조;
+  /* 2026-08-25 — `fitAccent`가 정의만 돼 있고 **한 번도 호출되지 않았다.** README와 타입 주석은
+     "액센트도 바탕에서 4.5:1 이상 대비가 나오게 자동 보정된다"고 약속하는데 실제로는 없었다.
+     실측: mono 무드 + `bg:"#111111"`에서 강조 단어 '먼저'가 통째로 안 보였다
+     (잉크는 흰색으로 뒤집히는데 액센트는 어두운 채로 남아 검정 위 검정이 됐다).
+     대비가 이미 충분하면 fitAccent가 원래 색을 그대로 돌려주므로 기존 무드는 안 바뀐다. */
+  const moodAccent = fitAccent(brand.accent ?? mood.강조, brand.bg ?? mood.바탕);
   const 어두운무드 = luminance(moodBg) < 0.5;
   const t: Theme = {
     page: moodBg,
@@ -391,7 +399,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
      기본 무드가 이거라서, 강조 문법을 처음 써본 사람은 아무 일도 안 일어나는 걸 본다(2026-08-13).
      무드 정체성이 '색 없음'인 건 의도한 설계라 색을 넣지 않고, 그때만 색면으로 표시한다.
      밑줄이 아니라 색면인 이유: 밑줄은 한글 받침을 갉아먹는다. */
-  const EMPH_FILL = brand.surface === 'dark' ? 'rgba(255,255,255,0.16)' : 'rgba(16,16,16,0.11)';
+  /* 2026-08-25 — 여기가 `brand.surface === 'dark'`였다. surface는 2026-08-22에 없어진 필드라
+     이 조건은 영원히 거짓이었고, **어두운 무드(neon 검정+초록, beauty 블랙+골드)에서
+     어두운 색면을 어두운 바탕에 칠해 강조가 사라졌다.** 실제 바탕 밝기로 판정한다. */
+  const EMPH_FILL = 어두운무드 ? 'rgba(255,255,255,0.16)' : 'rgba(16,16,16,0.11)';
   const titleEmph: CSSProperties = t.accent === t.ink
     ? {
         /* 2026-08-23 — 인라인 span의 배경은 폰트 메트릭(어센트~디센트) 전체를 칠한다.
