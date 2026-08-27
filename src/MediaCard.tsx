@@ -267,9 +267,15 @@ const contrastRatio = (a: string, b: string): number => {
 };
 const pickOn = (bg: string, dark: string, light: string) =>
   contrastRatio(bg, dark) >= contrastRatio(bg, light) ? dark : light;
-/* 액센트가 배경에서 안 읽히면(4.5:1 미만) 읽힐 때까지 밝기를 민다 */
-const fitAccent = (accent: string, bg: string): string => {
-  if (contrastRatio(accent, bg) >= 4.5) return accent;
+/* 액센트가 배경에서 안 읽히면 읽힐 때까지 밝기를 민다.
+
+   기준 대비를 인자로 받는다(2026-08-25). 4.5:1은 **본문 글자** 기준이고,
+   WCAG는 굵은 대형 텍스트(24px 이상 bold)에 **3:1**을 쓴다. 우리 제목은 92px 볼드라 3:1이 맞다.
+   4.5로 밀었더니 무드 4개의 색이 바뀌었다 — note 형광노랑이 탁한 갈색(#766924)이 되고,
+   soft 핑크가 어두운 자주, warm 주황이 갈색이 됐다. 무드 정체성은 액센트 한 색이 내는 것이라
+   이건 접근성이 아니라 파괴다. 3:1에서는 warm만 #f97316 -> #db6513 으로 살짝 진해진다. */
+const fitAccent = (accent: string, bg: string, target = 4.5): string => {
+  if (contrastRatio(accent, bg) >= target) return accent;
   const toDarkSide = luminance(bg) > 0.5;
   let [r, g, b] = hexToRgb(accent);
   for (let i = 0; i < 24; i++) {
@@ -279,7 +285,7 @@ const fitAccent = (accent: string, bg: string): string => {
     g = Math.max(0, Math.min(255, Math.round(g * k + add)));
     b = Math.max(0, Math.min(255, Math.round(b * k + add)));
     const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
-    if (contrastRatio(hex, bg) >= 4.5) return hex;
+    if (contrastRatio(hex, bg) >= target) return hex;
   }
   return pickOn(bg, '#101010', '#ffffff');
 };
@@ -331,6 +337,37 @@ const Grain: React.FC<{ level?: 'light' | 'heavy' }> = ({ level }) =>
       }}
     />
   ) : null;
+
+/* 스크림 프리미티브 — 사진 위에 글자가 앉을 자리를 덮는 층(2026-08-25 Phase 1b).
+   지금까지 세 곳에 서로 다른 모양으로 하드코딩돼 있었다:
+     표지 하단스크림   moods.json 정본의 5정지점을 CSS로 편 것, inset 0
+     표지 전면틴트     균일한 검정 반투명(그라데이션 아님)
+     전면 판형        4정지점 하드코딩 + 마스트헤드용 상단 그라데이션 별도
+   Phase 3에서 **사진 밝기를 재서 강도를 자동 산출**할 자리가 정확히 여기다. 먼저 모은다.
+
+   조사(2026-08-25)에서 확인된 것: 한국 카드뉴스 관례의 다수는 그라데이션이 아니라
+   **검정 50% 평면 딤**이다(슬로워크). 그래서 flat 도 1급으로 받는다 — 전면틴트가 이미 그 형태였다. */
+type ScrimStop = { at: string; alpha: number };
+const Scrim: React.FC<{
+  /** 평면 딤. 주면 그라데이션 대신 균일한 검정 반투명을 깐다 */
+  flat?: number;
+  /** 위→아래 정지점. flat 이 없을 때 쓴다 */
+  stops?: ScrimStop[];
+  top?: number | string;
+  /** 주면 top+height, 없으면 top~bottom:0 */
+  height?: number | string;
+}> = ({ flat, stops, top = 0, height }) => (
+  <div
+    style={{
+      position: 'absolute', left: 0, right: 0, top,
+      ...(height === undefined ? { bottom: 0 } : { height }),
+      background: flat !== undefined
+        ? `rgba(0,0,0,${flat})`
+        : `linear-gradient(to bottom, ${(stops ?? []).map((st) => `rgba(0,0,0,${st.alpha}) ${st.at}`).join(', ')})`,
+      pointerEvents: 'none',
+    }}
+  />
+);
 
 /** 카드 한 장의 글이 글 존에 들어가는 배율 — 1보다 크면 여유가 남고, 작으면 넘친다. */
 const fitRatio = (c: { title: string; body?: string[]; label?: string }) => {
@@ -384,10 +421,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
   ] };
   const tintStrength = scrimProp ? (scrimProp as any).전면틴트세기 ?? 0.52 : 0.52;
   const boxPhotoH = scrimProp ? (scrimProp as any).상단박스사진높이 ?? 700 : 700;
-  const scrimCss = `linear-gradient(to bottom, ${scrimDoc.정지점.map((st) => {
-    const a = Math.max(0, Math.min(st.상한 ?? 1, scrimDoc.기본세기 * st.세기배수));
-    return `rgba(0,0,0,${a}) ${st.위치}`;
-  }).join(', ')})`;
+  /* 정본의 정지점을 그대로 편다. 값은 안 바꾼다 — Phase 1b는 모으기만 한다. */
+  const scrimStops: ScrimStop[] = scrimDoc.정지점.map((st) => ({
+    at: st.위치,
+    alpha: Math.max(0, Math.min(st.상한 ?? 1, scrimDoc.기본세기 * st.세기배수)),
+  }));
 
   const frame = useCurrentFrame();
   /* 2026-08-22 — 본문 카드의 색을 무드에서 만든다.
@@ -400,7 +438,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
      실측: mono 무드 + `bg:"#111111"`에서 강조 단어 '먼저'가 통째로 안 보였다
      (잉크는 흰색으로 뒤집히는데 액센트는 어두운 채로 남아 검정 위 검정이 됐다).
      대비가 이미 충분하면 fitAccent가 원래 색을 그대로 돌려주므로 기존 무드는 안 바뀐다. */
-  const moodAccent = fitAccent(brand.accent ?? mood.강조, brand.bg ?? mood.바탕);
+  /* 액센트는 **원본 그대로** 둔다. t.accent 를 쓰는 세 곳 중 둘(비교 카드 채운 패널 배경,
+     단계 번호 배지 배경)은 **채움**이라 색을 바꾸면 무드가 바뀐다 — 그 위 글자색은 이미
+     pickOn 이 배경에서 역산한다. 글자로 쓰는 곳은 titleEmph 하나뿐이고 거기서만 보정한다.
+     (2026-08-25: 여기서 일괄 보정했다가 무드 4개의 색을 바꿔버렸다.) */
+  const moodAccent = brand.accent ?? mood.강조;
   const 어두운무드 = luminance(moodBg) < 0.5;
   const t: Theme = {
     page: moodBg,
@@ -453,7 +495,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         padding: '0.11em 0.10em',
         boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone',
       }
-    : { color: t.accent };
+    /* 제목 강조는 글자다 — 여기서만 배경 대비를 맞춘다. 92px 볼드라 대형 텍스트 기준 3:1.
+       **미해결**: note 무드는 강조색(#ffe14d)이 글자색이 아니라 **형광펜 배경**인데,
+       본문 카드에는 형광펜 처리가 없어서(표지 전용) 노랑이 글자색으로 쓰이며 1.30:1로 안 읽힌다.
+       지금은 보정으로 읽히게만 해두고, Phase 2에서 본문 카드에도 형광펜을 내려 제대로 고친다. */
+    : { color: fitAccent(t.accent, t.page, 3) };
   // 본문 강조는 어느 무드에서나 색이 아니라 굵기로 준다 — 한 카드에 색이 두 군데면 시선이 갈라진다.
   const bodyEmph: CSSProperties = { fontWeight: 700, color: t.ink };
 
@@ -590,12 +636,9 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
                   총천연색이면 그 무드를 고른 이유가 사라지고, 블랙+골드와 구분도 안 된다. */}
               {media(처리 === '흑백스크림' ? { filter: 'grayscale(1)' } : undefined)}
             </div>
-            <div
-              style={{
-                position: 'absolute', inset: 0,
-                background: 처리 === '전면틴트' ? `rgba(0,0,0,${tintStrength})` : scrimCss,
-              }}
-            />
+            {처리 === '전면틴트'
+              ? <Scrim flat={tintStrength} />
+              : <Scrim stops={scrimStops} />}
           </>
         ) : (
           <Grain level={brand.texture} />
@@ -1317,19 +1360,17 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             중간을 한 번 꺾는 이유: 곧장 검정으로 가면 경계가 띠처럼 보인다.
             밝은 자료(흰 UI·하늘·눈)에서도 흰 글자가 읽혀야 하므로 아래쪽은 충분히 진하게 간다 —
             자료를 살리겠다고 옅게 깔면 글이 안 읽혀서 카드가 통째로 못 쓰게 된다. */}
-        <div
-          style={{
-            position: 'absolute', left: 0, right: 0, bottom: 0, top: scrimTop,
-            background:
-              'linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.42) 30%, rgba(0,0,0,0.78) 58%, rgba(0,0,0,0.96) 100%)',
-          }}
+        <Scrim
+          top={scrimTop}
+          stops={[
+            { at: '0%', alpha: 0 }, { at: '30%', alpha: 0.42 },
+            { at: '58%', alpha: 0.78 }, { at: '100%', alpha: 0.96 },
+          ]}
         />
         {/* 마스트헤드도 밝은 자료 위에선 사라진다 — 아주 얕게만 덮는다 */}
-        <div
-          style={{
-            position: 'absolute', left: 0, right: 0, top: 0, height: 150,
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0) 100%)',
-          }}
+        <Scrim
+          height={150}
+          stops={[{ at: '0%', alpha: 0.42 }, { at: '100%', alpha: 0 }]}
         />
 
         <Masthead text={mastheadText} color="#ffffff" />
