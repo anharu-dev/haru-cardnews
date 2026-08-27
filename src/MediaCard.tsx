@@ -195,6 +195,42 @@ const Badge: React.FC<{ text?: string; bg: string; fg: string }> = ({ text, bg, 
     </div>
   ) : null;
 
+/* 제목 프리미티브 — 판형 7곳이 같은 모양을 복붙하던 것을 한 곳으로 모은다(2026-08-25 Phase 1).
+   값은 전부 원본 7곳에서 그대로 옮겼다. **이 단계에서 출력이 바뀌면 안 된다.**
+
+   추출하는 이유: 레퍼런스 15장 중 6장에서 반복된 규칙이 "제목 1행은 얇게, 2행은 굵게"인데,
+   지금은 titleLines.map이 7곳에서 **모든 행에 같은 style 객체**를 적용한다. 행별 스타일 축이
+   스키마에도 렌더에도 없다. 그 축을 Phase 2에서 여기 한 곳에만 넣으려고 먼저 모은다.
+
+   wordBreak: keep-all 은 어절을 지키고, overflowWrap: anywhere 는 띄어쓰기 없는 긴 덩어리
+   (URL 등)가 컬럼 밖으로 흘러나가는 것만 막는다 — 평소엔 어절을 지키고 넘칠 때만 끊는다. */
+const Headline: React.FC<{
+  lines: string[];
+  font: string;
+  size: number;
+  weight: CSSProperties['fontWeight'];
+  color: string;
+  tracking: CSSProperties['letterSpacing'];
+  leading: CSSProperties['lineHeight'];
+  emph: CSSProperties;
+  /** 판형별로 원본에 붙어 있던 추가 스타일(marginBottom·textShadow 등) */
+  extra?: CSSProperties;
+  /** 기본 켬. 끈 곳은 기본 창 판형 하나뿐인데, 원본에 없던 속성을 새로 넣지 않으려고 그대로 뒀다. */
+  breakAnywhere?: boolean;
+}> = ({ lines, font, size, weight, color, tracking, leading, emph, extra, breakAnywhere = true }) => (
+  <div
+    style={{
+      fontFamily: font, fontSize: size, fontWeight: weight, color,
+      letterSpacing: tracking, lineHeight: leading,
+      wordBreak: 'keep-all',
+      ...(breakAnywhere ? { overflowWrap: 'anywhere' as const } : {}),
+      ...extra,
+    }}
+  >
+    {lines.map((l, i) => <div key={i}>{emphasize(l, emph)}</div>)}
+  </div>
+);
+
 /* 색 원칙 (2026-07-30 확정)
    - 블랙은 **중립 근사 블랙 하나**로 통일한다. 차콜·네이비·웜그레이 같은 틴트 섞기 금지 —
      애매한 회색 바탕이 요즘 AI 슬롭의 표식이다. 순검정보다 한 단계만 낮춰 눈만 덜 아프게.
@@ -596,15 +632,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             </div>
           ) : null}
 
-          <div
-            style={{
-              fontFamily: look.제목글꼴, fontSize: titleSize * fit, fontWeight: look.제목굵기,
-              color: ink, letterSpacing: look.제목자간, lineHeight: mood.제목행간,
-              wordBreak: 'keep-all', overflowWrap: 'anywhere',
-            }}
-          >
-            {titleLines.map((l, i) => <div key={i}>{emphasize(l, coverEmph)}</div>)}
-          </div>
+          <Headline
+            lines={titleLines} font={look.제목글꼴} size={titleSize * fit} weight={look.제목굵기}
+            color={ink} tracking={look.제목자간} leading={mood.제목행간} emph={coverEmph}
+          />
 
           {card.body.length ? (
             <div
@@ -701,19 +732,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             textAlign: 'center',
           }}
         >
-          <div
-            style={{
-              fontFamily: look.제목글꼴, fontSize: 92 * ctaFit, fontWeight: look.제목굵기, color: inkC,
-              letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
-              // keep-all은 어절을 지키지만, 띄어쓰기 없는 긴 덩어리(URL 등)는 컬럼 밖으로 흘러나간다.
-              // anywhere를 같이 주면 평소엔 어절을 지키고 넘칠 때만 끊는다.
-              wordBreak: 'keep-all', overflowWrap: 'anywhere',
-            }}
-          >
-            {titleLines.map((l, i) => (
-              <div key={i}>{emphasize(l, titleEmph)}</div>
-            ))}
-          </div>
+          <Headline
+            lines={titleLines} font={look.제목글꼴} size={92 * ctaFit} weight={look.제목굵기}
+            color={inkC} tracking={`${TITLE_TRACK}em`} leading={TITLE_LH} emph={titleEmph}
+          />
 
           {/* 간격(marginTop)은 배율에 안 곱한다 — 제목이 1.5배로 커질 때 간격까지 1.5배가
               되면 글 덩어리가 흩어져 보인다. 커지는 건 글자지 사이가 아니다. */}
@@ -916,17 +938,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         <Masthead text={mastheadText} color={t.ink} />
 
         <div style={{ position: 'absolute', left: M, right: M, top: cmpTop }}>
-          <div
-            style={{
-              fontFamily: look.제목글꼴, fontSize: titleSize, fontWeight: look.제목굵기, color: t.ink,
-              letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
-              wordBreak: 'keep-all', overflowWrap: 'anywhere',
-            }}
-          >
-            {titleLines.map((l, i) => (
-              <div key={i}>{emphasize(l, titleEmph)}</div>
-            ))}
-          </div>
+          <Headline
+            lines={titleLines} font={look.제목글꼴} size={titleSize} weight={look.제목굵기}
+            color={t.ink} tracking={`${TITLE_TRACK}em`} leading={TITLE_LH} emph={titleEmph}
+          />
         </div>
 
         <Column side={left} x={M} align="right" />
@@ -1058,17 +1073,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
 
         <div style={{ position: 'absolute', left: M, right: M, top: stepTop }}>
           {card.title ? (
-            <div
-              style={{
-                fontFamily: look.제목글꼴, fontSize: 60 * stepsFit, fontWeight: look.제목굵기, color: t.ink,
-                letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH, marginBottom: titleGap * stepsFit,
-                wordBreak: 'keep-all', overflowWrap: 'anywhere',
-              }}
-            >
-              {titleLines.map((l, i) => (
-                <div key={i}>{emphasize(l, titleEmph)}</div>
-              ))}
-            </div>
+            <Headline
+              lines={titleLines} font={look.제목글꼴} size={60 * stepsFit} weight={look.제목굵기}
+              color={t.ink} tracking={`${TITLE_TRACK}em`} leading={TITLE_LH} emph={titleEmph}
+              extra={{ marginBottom: titleGap * stepsFit }}
+            />
           ) : null}
 
           {card.steps.map((s, i) => (
@@ -1227,14 +1236,10 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
         <Badge text={card.badge} bg={t.chipBg} fg={t.chipText} />
         <Masthead text={mastheadText} color={t.ink} />
         <div style={{ position: 'absolute', left: M, right: M, top }}>
-          <div
-            style={{
-              fontFamily: look.제목글꼴, fontSize: tTitle, fontWeight: look.제목굵기, color: t.ink,
-              letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH, wordBreak: 'keep-all', overflowWrap: 'anywhere',
-            }}
-          >
-            {titleLines.map((l, i) => <div key={i}>{emphasize(l, titleEmph)}</div>)}
-          </div>
+          <Headline
+            lines={titleLines} font={look.제목글꼴} size={tTitle} weight={look.제목굵기}
+            color={t.ink} tracking={`${TITLE_TRACK}em`} leading={TITLE_LH} emph={titleEmph}
+          />
           {blocks.length && !벌린다 ? (
             <div style={{ marginTop: BODY_GAP * fit * tf }}>
               {blocks.map((b, i) => (
@@ -1344,18 +1349,12 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
               {card.label}
             </div>
           ) : null}
-          <div
-            style={{
-              fontFamily: look.제목글꼴, fontSize: TITLE_SIZE * fit, fontWeight: look.제목굵기, color: '#ffffff',
-              letterSpacing: `${TITLE_TRACK}em`, lineHeight: TITLE_LH,
-              wordBreak: 'keep-all', overflowWrap: 'anywhere',
-              textShadow: '0 2px 24px rgba(0,0,0,0.45)',
-            }}
-          >
-            {titleLines.map((l, i) => (
-              <div key={i}>{emphasize(l, { color: t.accentDark })}</div>
-            ))}
-          </div>
+          <Headline
+            lines={titleLines} font={look.제목글꼴} size={TITLE_SIZE * fit} weight={look.제목굵기}
+            color="#ffffff" tracking={`${TITLE_TRACK}em`} leading={TITLE_LH}
+            emph={{ color: t.accentDark }}
+            extra={{ textShadow: '0 2px 24px rgba(0,0,0,0.45)' }}
+          />
           {card.body.length ? (
             <div style={{ marginTop: BODY_GAP * fit }}>
               {card.body.map((line, i) => (
@@ -1433,16 +1432,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
 
       {/* 텍스트 존 */}
       <div style={{ position: 'absolute', left: M, right: M, top: textTop }}>
-        <div
-          style={{
-            fontFamily: look.제목글꼴, fontSize: TITLE_SIZE * fit, fontWeight: look.제목굵기, color: t.ink,
-            letterSpacing: '-0.035em', lineHeight: TITLE_LH, wordBreak: 'keep-all',
-          }}
-        >
-          {titleLines.map((l, i) => (
-            <div key={i}>{emphasize(l, titleEmph)}</div>
-          ))}
-        </div>
+        <Headline
+          lines={titleLines} font={look.제목글꼴} size={TITLE_SIZE * fit} weight={look.제목굵기}
+          color={t.ink} tracking="-0.035em" leading={TITLE_LH} emph={titleEmph}
+          breakAnywhere={false}
+        />
         {blocks.length ? (
         <div style={{ marginTop: BODY_GAP * fit }}>
           {blocks.map((b, i) =>
