@@ -35,6 +35,19 @@ export type MediaCardDef = {
   label?: string;          // 창 아래 캡션 (예: 출처명 · CASE 01)
   title: string;
   body: string[];
+  /** 표지·전면 판형 전용(2026-08-25 Phase 2). true면 제목 마지막 줄을 뺀 나머지 줄이
+   *  얇고 무드 강조색으로, 마지막 줄은 지금처럼 굵고 기본색으로 남는다 — 레퍼런스 15장 중
+   *  6장에서 반복된 "1행 얇게 2행 굵게" 규칙. 제목이 한 줄이면 아무 효과가 없다.
+   *
+   *  **기본은 꺼짐.** 이 필드를 만들며 기존 덱 61장(표지·전면의 2줄 이상 제목)을 세어보니
+   *  자동으로 켜면 전부 한꺼번에 바뀐다 — 그 정도 블라스트 반경은 확인 없이 넘길 수 없었다.
+   *
+   *  룩마다 다르게 동작한다: `impact`(Pretendard)만 300~800이 전부 동봉돼 있어 실제로
+   *  얇아진다. `magazine`(Gowun Batang)·`minimal`(Gothic A1)은 두께 파일이 하나뿐이라
+   *  얇게 요청하면 브라우저가 가짜 두께를 만든다(fonts.ts에 이미 적힌 경고) — 그래서 그
+   *  두 룩은 두께를 그대로 두고 **색만** 바꾼다. 완전한 구현을 원하면 그 두 글꼴의 다른
+   *  두께 파일을 받아와야 한다(별도 작업). */
+  twoTone?: boolean;
   /** 카드 길이(초) 직접 지정. 렌더 스크립트가 읽으며, 지정해도 10~20초 안으로 맞춰진다 */
   duration?: number;
   /** 전면 판형 — 자료가 카드를 꽉 채우고, 하단 그라데이션 위에 흰 글자를 얹는다.
@@ -195,6 +208,13 @@ const Badge: React.FC<{ text?: string; bg: string; fg: string }> = ({ text, bg, 
     </div>
   ) : null;
 
+/* 2026-08-25 Phase 2 — "1행 얇게" 는 그 글꼴에 얇은 두께 파일이 실제로 동봉돼 있을 때만
+   요청한다. 없는 두께를 요청하면 브라우저가 가짜 두께를 만든다(fonts.ts already warns this).
+   지금 동봉 상태: Pretendard 300/400/700/800(전부) · Gowun Batang 700(하나) · Gothic A1 800(하나).
+   그래서 magazine·minimal 룩은 두께를 그대로 두고 색으로만 위계를 준다. */
+const dimWeightFor = (font: string): CSSProperties['fontWeight'] | undefined =>
+  font === 'Pretendard' ? 400 : undefined;
+
 /* 제목 프리미티브 — 판형 7곳이 같은 모양을 복붙하던 것을 한 곳으로 모은다(2026-08-25 Phase 1).
    값은 전부 원본 7곳에서 그대로 옮겼다. **이 단계에서 출력이 바뀌면 안 된다.**
 
@@ -217,17 +237,28 @@ const Headline: React.FC<{
   extra?: CSSProperties;
   /** 기본 켬. 끈 곳은 기본 창 판형 하나뿐인데, 원본에 없던 속성을 새로 넣지 않으려고 그대로 뒀다. */
   breakAnywhere?: boolean;
-}> = ({ lines, font, size, weight, color, tracking, leading, emph, extra, breakAnywhere = true }) => (
+  /** 2026-08-25 Phase 2 — 마지막 줄을 뺀 나머지 줄에 줄 것. 둘 다 없으면 이전과 완전히 같다.
+     lines.length가 1이면 적용할 "나머지 줄"이 없어 자동으로 아무 효과가 없다. */
+  dimWeight?: CSSProperties['fontWeight'];
+  dimColor?: string;
+}> = ({ lines, font, size, weight, color, tracking, leading, emph, extra, breakAnywhere = true, dimWeight, dimColor }) => (
   <div
     style={{
-      fontFamily: font, fontSize: size, fontWeight: weight, color,
+      fontFamily: font, fontSize: size,
       letterSpacing: tracking, lineHeight: leading,
       wordBreak: 'keep-all',
       ...(breakAnywhere ? { overflowWrap: 'anywhere' as const } : {}),
       ...extra,
     }}
   >
-    {lines.map((l, i) => <div key={i}>{emphasize(l, emph)}</div>)}
+    {lines.map((l, i) => {
+      const dim = (dimWeight !== undefined || dimColor !== undefined) && i < lines.length - 1;
+      return (
+        <div key={i} style={{ fontWeight: dim && dimWeight !== undefined ? dimWeight : weight, color: dim && dimColor !== undefined ? dimColor : color }}>
+          {emphasize(l, emph)}
+        </div>
+      );
+    })}
   </div>
 );
 
@@ -678,6 +709,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
           <Headline
             lines={titleLines} font={look.제목글꼴} size={titleSize * fit} weight={look.제목굵기}
             color={ink} tracking={look.제목자간} leading={mood.제목행간} emph={coverEmph}
+            dimWeight={card.twoTone ? dimWeightFor(look.제목글꼴) : undefined}
+            dimColor={card.twoTone ? (사진위글자 ? (mood.사진위강조 ?? moodAccent) : fitAccent(moodAccent, moodBg, 3)) : undefined}
           />
 
           {card.body.length ? (
@@ -1395,6 +1428,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ brand, card, durFrames, de
             color="#ffffff" tracking={`${TITLE_TRACK}em`} leading={TITLE_LH}
             emph={{ color: t.accentDark }}
             extra={{ textShadow: '0 2px 24px rgba(0,0,0,0.45)' }}
+            dimWeight={card.twoTone ? dimWeightFor(look.제목글꼴) : undefined}
+            dimColor={card.twoTone ? t.accentDark : undefined}
           />
           {card.body.length ? (
             <div style={{ marginTop: BODY_GAP * fit }}>

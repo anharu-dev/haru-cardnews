@@ -158,6 +158,7 @@ characters. Past 10 the scale drops, and when even that fails the line folds and
 | `full` | Media fills the card, white text sits on a bottom gradient. For photos and generated images. Using it for 16:9 screen recordings crops the sides heavily |
 | `label` | One-line caption under the clip, for attribution |
 | `title` | `\n` sets line breaks. `*word*` marks accent emphasis |
+| `twoTone` | **Cover and full only.** When the title has 2+ lines, every line but the last renders lighter and in the mood's accent color. Off by default. Only the `impact` look (Pretendard) actually gets a lighter weight — `magazine` and `minimal` ship a single weight file each, so they shift color only, never a faked weight |
 | `body` | Array, one sentence per line, 0–3 lines. `*phrase*` emphasizes by weight |
 | `badge` | Small label chip, top left. One or two words. Never applied to cta cards |
 | `duration` | Card length in seconds. Automatic if omitted, and clamped to 10–20s either way |
